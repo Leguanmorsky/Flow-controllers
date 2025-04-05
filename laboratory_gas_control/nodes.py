@@ -2,14 +2,13 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext
 
 class Node:
-    def __init__(self, node_id, name, flow_device, temperature, pressure, valve_output,status,valve_open):
+    def __init__(self, node_id, name, flow_device, temperature, valve_output, fmeasure,status,valve_open):
         self.node_id = node_id
         self.name = name
         self.flow_device=flow_device
         self.temperature = temperature
-        self.pressure = pressure
         self.valve_output = valve_output
-        self.list_of_nodes=[]
+        self.fmeasure = fmeasure
         self.status=status
         self.valve_open=valve_open
 
@@ -17,32 +16,42 @@ class Node:
             try:
                 # params = [{'node': self.node_id,'proc_nr': 33, 'parm_nr': 7, 'parm_type': propar.PP_TYPE_INT16}]
                 value = self.flow_device.readParameter(142)
-                self.temperature = round(value, 6)  # Round to 3 decimal places
-                label.config(text=f"Temp: {self.temperature:.6f} °C")
+                self.temperature = round(value, 3)  # Round to 3 decimal places
+                label.config(text=f"Temp: {self.temperature} °C")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to update temperature: {e}")
 
-    def update_pressure(self,label):
-        try:
-            # params = [{'node': self.node_id,'proc_nr': 33, 'parm_nr': 8, 'parm_type': propar.PP_TYPE_INT16}]
-            value = self.flow_device.readParameter(143)
-            self.pressure=round(value, 3)
-            label.config(text=f"Pressure: {self.pressure:.3f} mbar")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to update pressure: {e}")
-
     def update_valve_output(self,label):
+        try:
+            value = self.flow_device.readParameter(55)
+            self.valve_output=value
+            label.config(text=f"V.output in 24-bit: {self.valve_output}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update valve output: {e}")
+
+    def measure(self,label):
         try:
             # params = [{'node': self.node_id, 'proc_nr': 33, 'parm_nr': 6, 'parm_type': propar.PP_TYPE_INT16}]
             value = self.flow_device.readParameter(8)
-            self.valve_output=round(value, 3)
-            label.config(text=f"VolumeF: {value:.1f} ln/min")
+            self.fmeasure=value
+            label.config(text=f"Measure: {value}")
             # {value:.4f}
             # move_entry.delete(0, tk.END)  # Clear previous value
             # move_entry.insert(0, f"{self.valve_output:.3f}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update valve output: {e}")
-    
+            
+    def setpoint(self,value):
+        try:
+            value = int(value)
+            self.flow_device.setpoint = value
+            # Read the inserted parameter back to be sure
+            read_back = self.flow_device.readParameter(9) 
+            print(f"Setpoint readback-{self.name}: {read_back}")
+            # self.measure()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to set flow: {e}")
+    # .......................................................................................................................  
     def update_open_valve(self,label):
         try:
             # params = [{'node': self.node_id, 'proc_nr': 33, 'parm_nr': 6, 'parm_type': propar.PP_TYPE_INT16}]
@@ -53,30 +62,16 @@ class Node:
             # move_entry.insert(0, f"{self.valve_output:.3f}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update valve open: {e}")
-            
-    def set_flow(self,value):
-        print(value)
-        try:
-            
-            # Try converting the value to float
-            value = float(value)
-            # If successful, write the value to the device
-            status = self.flow_device.writeParameter(206, value)
-            self.status = status
-            messagebox.showinfo("Success", f"Flow set to {value:.3f} ln/min")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to set flow: {e}")
-        print(self.status)
+        
     def open_valve(self,value):
-        print(value)
         try:
             
             # Try converting the value to float
             value = float(value)
             # If successful, write the value to the device
-            status = self.flow_device.writeParameter(234, (value/100))
+            status = self.flow_device.writeParameter(42, value)
             self.status = status
-            messagebox.showinfo("Success", f"Valve opened: {value:.3f} %")
+            messagebox.showinfo("Success", f"Valve opened: {value:.3f}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open valve: {e}")
             
