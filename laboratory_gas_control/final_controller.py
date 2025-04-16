@@ -28,6 +28,7 @@ class FlowControllerApp:
                 node.update_temperature(temp_label)
                 node.update_valve_output(valve_output_label)
                 node.measure(massF_label)
+                node.append_to_csv()
                 # node.update_open_valve(valve_open_label)
 
             # Schedule next update in 2 seconds
@@ -44,7 +45,6 @@ class FlowControllerApp:
             self.auto_update()  # Start the update loop
 
     def create_widgets(self):
-        # Connect/Disconnect Buttons
         self.connect_button = tk.Button(self.master, text="Connect", command=self.connect_device)
         self.connect_button.grid(row=0, column=0, padx=10, pady=10)
 
@@ -61,13 +61,14 @@ class FlowControllerApp:
         
         self.update_button = tk.Button(self.master, text="Start Auto Update", command=self.toggle_auto_update)
         self.update_button.grid(row=0, column=3, columnspan=2, pady=10)
-
+        # Constant i for proper layout
+        i=1
         # Dynamically create UI for each node in a horizontal layout
         for index, node in enumerate(self.list_of_nodes, start=1):
             # Create a frame for each node
             node_frame = tk.Frame(self.master, bd=2, relief=tk.SUNKEN, padx=5, pady=5)
-            node_frame.grid(row=1, column=index, padx=10, pady=10)
-            
+            node_frame.grid(row=(i-index), column=(index+1), padx=10, pady=10)
+            i+=2
             # Optional naming of nodes (type of gas etc)
             # move_entry = tk.Entry(node_frame, width=10)
             # move_entry.grid(row=4, column=1, padx=2, pady=2)
@@ -144,7 +145,8 @@ class FlowControllerApp:
             # Node 1: {'address': 4, 'type': 'DMFC', 'serial': 'M24207457D', 'id': '\x07SNM24207457D', 'channels': 1}
             if self.nodes:
                 for n in range(0,len(self.nodes)):
-                    node = nd.Node(self.nodes[n]["id"], f"Node_{self.nodes[n]['address']}",propar.instrument("COM9",self.nodes[n]['address']), None, None, None,None,None)
+                    node = nd.Node(self.nodes[n]["id"], f"Node_{self.nodes[n]['address']}",propar.instrument("COM9",self.nodes[n]['address']), None, None, None,0,None,None,None)
+                    node.initialize_csv(node.name)
                     self.list_of_nodes.append(node)
                     # self.list_of_nodes = [node4, node5, node6, node33]
                 self.update_ui_after_connection()
