@@ -2,16 +2,51 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext
 import propar
 import nodes as nd
+from itertools import count
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import csv
+import time
 
 class FlowControllerApp:
     def __init__(self, master):
         self.master = master
         self.master.title("Flow Controller")
-        self.master.geometry("1200x600")
+        self.master.geometry("1700x850")
         self.nodes=None
         self.list_of_nodenames=[]
         self.list_of_nodes=[]
         self.auto_update_running = False  # Flag to track auto-updating
+        
+        self.node_names=[]
+        self.subplots_names=["Setpoint","Measure","Valve output"]
+        self.subplot_to_attr = {
+            "Setpoint": "fsetpoint",
+            "Measure": "fmeasure",
+            "Valve output": "valve_output"
+            # Add more if needed
+        }
+        # self.plots_in_node=len(self.subplots_names)
+        # self.total_lines=len(self.node_names)*self.plots_in_node
+        self.window_width = 100
+        self.interval=250
+        self.ymax=32000
+        self.center_offset=self.window_width//2
+        self.start_time = time.time()
+        # self.x_vals=[]
+        # self.y_vals = [[[] for _ in self.subplots_names] for _ in self.node_names]
+        # self.colors_names=[["#6495ED","#0000FF","#00008B"],
+        #                    ["#7FFFD4","#00FF00","#008000"],
+        #                    ["#F4A460","#FFFF00","#8B0000"],
+        #                    ["#EE82EE","#FF00FF","#8B008B"]]
+        # self.labels=[[f"Node {n+1}-{self.subplots_names[v]}" for n in range(len(self.subplots_names))] for v in range(len(self.node_names))]
+        self.fig, self.ax = plt.subplots(figsize=(10, 5))
+        self.ax.set_ylim(-500, self.ymax)  # Lock y-axis
+        
+        self.ani = None  # Reserve animation object
+        self.canvas = None  # Reserve canvas object
+        
         self.create_widgets()
     
     def auto_update(self):
@@ -28,11 +63,11 @@ class FlowControllerApp:
                 node.update_temperature(temp_label)
                 node.update_valve_output(valve_output_label)
                 node.measure(massF_label)
-                node.append_to_csv()
+                # node.append_to_csv()
                 # node.update_open_valve(valve_open_label)
 
             # Schedule next update in 2 seconds
-            self.master.after(1500, self.auto_update)
+            self.master.after(750, self.auto_update)
 
     def toggle_auto_update(self):
         """Starts or stops auto-updating process."""
@@ -59,19 +94,35 @@ class FlowControllerApp:
             frame.destroy()
         self.node_frames = []
         
+        self.plots_in_node=len(self.subplots_names)
+        self.total_lines=len(self.node_names)*self.plots_in_node
+        self.x_vals=[]
+        self.y_vals = [[[] for _ in range(len(self.subplots_names))] for _ in range(len(self.node_names))]
+        self.colors_names=[["#6495ED","#0000FF","#00008B"],
+                           ["#7FFFD4","#00FF00","#008000"],
+                           ["#F4A460","#FFFF00","#8B0000"],
+                           ["#EE82EE","#FF00FF","#8B008B"]]
+        self.labels=[[f"{self.node_names[v]}-{self.subplots_names[n]}" for n in range(len(self.subplots_names))] for v in range(len(self.node_names))]
+        
+        
         self.update_button = tk.Button(self.master, text="Start Auto Update", command=self.toggle_auto_update)
         self.update_button.grid(row=0, column=3, columnspan=2, pady=10)
-        # Constant i for proper layout
-        i=1
+        
+         # Create a frame specifically for the matplotlib plot
+        self.plot_frame = tk.Frame(self.master, bd=2, relief=tk.RIDGE)
+        self.plot_frame.grid(row=1,rowspan=2, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+        self.setup_plot()
+        
         # Dynamically create UI for each node in a horizontal layout
         for index, node in enumerate(self.list_of_nodes, start=1):
             # Create a frame for each node
             node_frame = tk.Frame(self.master, bd=2, relief=tk.SUNKEN, padx=5, pady=5)
-            node_frame.grid(row=(i-index), column=(index+1), padx=10, pady=10)
-            i+=2
+            # Polynoms solve proper position of each node [[N_4,N_5],[N_6,N_33]] etc. Named for my specific nodes
+            node_frame.grid(row=round((-1/3)*(index**3)+(5/2)*(index**2)-(31/6)*index+4), column=round((2/3)*(index**3)-5*(index**2)+(34/3)*index-5), padx=10, pady=10)
             # Optional naming of nodes (type of gas etc)
             # move_entry = tk.Entry(node_frame, width=10)
             # move_entry.grid(row=4, column=1, padx=2, pady=2)
+            
             
             # Node Info (Name, ID)
             node_label = tk.Label(node_frame, text=f"{node.name} (ID: {node.node_id})", font=("Arial", 10, "bold"))
@@ -140,13 +191,12 @@ class FlowControllerApp:
         try:
             device = propar.instrument("COM9")
             self.nodes=device.master.get_nodes()
-            print(self.nodes)
             messagebox.showinfo("Connected", "Successfully connected to the device.")
             # Node 1: {'address': 4, 'type': 'DMFC', 'serial': 'M24207457D', 'id': '\x07SNM24207457D', 'channels': 1}
             if self.nodes:
                 for n in range(0,len(self.nodes)):
                     node = nd.Node(self.nodes[n]["id"], f"Node_{self.nodes[n]['address']}",propar.instrument("COM9",self.nodes[n]['address']), None, None, None,0,None,None,None)
-                    node.initialize_csv(node.name)
+                    self.node_names.append(node.name)
                     self.list_of_nodes.append(node)
                     # self.list_of_nodes = [node4, node5, node6, node33]
                 self.update_ui_after_connection()
@@ -158,16 +208,6 @@ class FlowControllerApp:
             # [{'address': 4, 'type': 'DMFC', 'serial': 'M24207457D', 'id': '\x07SNM24207457D', 'channels': 1}, 
             #  {'address': 5, 'type': 'DMFC', 'serial': 'M24207457B', 'id': '\x07SNM24207457B', 'channels': 1},
             #  {'address': 6, 'type': 'DMFC', 'serial': 'M24207457A', 'id': '\x07SNM24207457A', 'channels': 1}]
-            
-            
-            
-            # self.nodes = [
-            #     {"adress": "Node A", "id": "001", "temperature": "25.0", "pressure": "1.2", "valve_output": "50%"},
-            #     {"adress": "Node B", "id": "002", "temperature": "24.5", "pressure": "1.3", "valve_output": "45%"},
-            #     {"adress": "Node C", "id": "003", "temperature": "26.0", "pressure": "1.1", "valve_output": "55%"},
-            #     {"adress": "Node D", "id": "004", "temperature": "25.8", "pressure": "1.4", "valve_output": "60%"}
-            # ]
-            # self.update_ui_after_connection()
 
     def disconnect_device(self):
         if self.flow_device:
@@ -175,7 +215,54 @@ class FlowControllerApp:
             messagebox.showinfo("Disconnected", "Successfully disconnected from the device.")
         else:
             messagebox.showwarning("Warning", "No device connected.")
-    
+                    
+    def animation(self,i):
+        current_time=time.time()-self.start_time
+        self.x_vals.append(current_time)
+        while self.x_vals and self.x_vals[0] < current_time - self.center_offset:
+            self.x_vals.pop(0)
+            for node_data in self.y_vals:
+                for line_data in node_data:
+                    if line_data:
+                        line_data.pop(0)
+        for node_index, node in enumerate(self.list_of_nodes):  # self.nodes are your node objects
+            for line_index, subplot_name in enumerate(self.subplots_names):
+                value = getattr(node, self.subplot_to_attr[subplot_name])  # You need to define this logic
+                self.y_vals[node_index][line_index].append(value)
+                # self.seek_csv(self.node_names[node],self.subplots_names[line])
+        self.ax.clear()
+        self.ax.set_ylim(-500, self.ymax)
+        
+        # Keep y-axis fixed
+        if current_time <= self.center_offset:
+            self.ax.set_xlim(0, self.window_width)
+        else:
+            self.ax.set_xlim(current_time - self.center_offset, current_time + self.center_offset)
+
+        self.ax.set_xlabel("Time (s)")
+        self.ax.set_ylabel("Value")
+        # Show only the last 'window_size' points
+        for node in range(len(self.node_names)):
+            for line in range(len(self.subplots_names)):
+                self.ax.plot(self.x_vals[-int((self.center_offset*(1000/self.interval))):],
+                        self.y_vals[node][line][-int((self.center_offset*(1000/self.interval))):],
+                        label=self.labels[node][line],
+                        color=self.colors_names[node][line],
+                        linewidth=1.5)
+
+        self.ax.legend(loc='upper left', fontsize=8, ncol=len(self.node_names))
+        self.ax.grid(True)
+        
+    def setup_plot(self):
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.plot_frame)
+        self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
+        self.ani = FuncAnimation(
+            self.fig,
+            self.animation,
+            interval=self.interval,
+            cache_frame_data=False,
+            blit=False
+    )
 def main():
     root = tk.Tk()
     app = FlowControllerApp(master=root)

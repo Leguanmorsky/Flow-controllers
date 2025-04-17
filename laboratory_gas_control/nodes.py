@@ -82,21 +82,21 @@ class Node:
             messagebox.showerror("Error", f"Failed to open valve: {e}")
             
 # .............................................................................................................................
-    def initialize_csv(self,spec_node):
-        # Open the file once and keep the file object in memory
-        fieldname=["setpoint","measure","valve_output"]
-        self.CSV = open(f"csvData_{spec_node}.csv", 'a', newline='')  # Open in append mode
-        self.writer = csv.DictWriter(self.CSV, fieldnames=fieldname)
+    # def initialize_csv(self,spec_node):
+    #     # Open the file once and keep the file object in memory
+    #     fieldname=["setpoint","measure","valve_output"]
+    #     self.CSV = open(f"csvData_{spec_node}.csv", 'a', newline='')  # Open in append mode
+    #     self.writer = csv.DictWriter(self.CSV, fieldnames=fieldname)
     
-        # If the file is empty, write the header (optional check)
-        if self.CSV.tell() == 0:  # Only write header if the file is empty
-            self.writer.writeheader()
+    #     # If the file is empty, write the header (optional check)
+    #     if self.CSV.tell() == 0:  # Only write header if the file is empty
+    #         self.writer.writeheader()
 
-    # Function to append data to the CSV file
-    def append_to_csv(self):
-        # self.writer = csv.DictWriter(self.CSV, fieldnames=fieldnames)
-        self.writer.writerow({'setpoint': self.fsetpoint, 'measure': self.fmeasure, "valve_output": self.valve_output})
-        self.CSV.flush()
+    # # Function to append data to the CSV file
+    # def append_to_csv(self):
+    #     # self.writer = csv.DictWriter(self.CSV, fieldnames=fieldnames)
+    #     self.writer.writerow({'setpoint': self.fsetpoint, 'measure': self.fmeasure, "valve_output": self.valve_output})
+    #     self.CSV.flush()
         
 # Standard mass flow in ln/min (20�C, 1.01325 bar (a)) air or g/h H2O equivalent","fbnr":22,"group0":3,"group1":"","group2":"","highly secured":False,"longname":"Standard flow",
 # "max":3.40282E38,"min":-3.40282E38,"name":"NormMasFlw","parameter":253,"poll":False,"process":113,"read":True,"secured":True,"varlength":"","vartype":"f","vartype2":"","write":True},
