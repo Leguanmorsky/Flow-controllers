@@ -57,14 +57,14 @@ class FlowControllerApp:
                 temp_label = node_frame.winfo_children()[1]  
                 valve_output_label = node_frame.winfo_children()[3]  
                 massF_label = node_frame.winfo_children()[5]  
-                # valve_open_label = node_frame.winfo_children()[7]
+                # increment_count_label = node_frame.winfo_children()[7]
 
                 # Update displayed values
                 node.update_temperature(temp_label)
                 node.update_valve_output(valve_output_label)
                 node.measure(massF_label)
                 # node.append_to_csv()
-                # node.update_open_valve(valve_open_label)
+                # node.update_open_valve(increment_count_label)
 
             # Schedule next update in 2 seconds
             self.master.after(750, self.auto_update)
@@ -106,7 +106,10 @@ class FlowControllerApp:
         
         
         self.update_button = tk.Button(self.master, text="Start Auto Update", command=self.toggle_auto_update)
-        self.update_button.grid(row=0, column=3, columnspan=2, pady=10)
+        self.update_button.grid(row=0, column=3, pady=10)
+        
+        open_table_button = tk.Button(self.master, text="Rename Nodes", command=self.show_node_rename_table)
+        open_table_button.pack(row=0, column=4, pady=10)
         
          # Create a frame specifically for the matplotlib plot
         self.plot_frame = tk.Frame(self.master, bd=2, relief=tk.RIDGE)
@@ -125,8 +128,12 @@ class FlowControllerApp:
             
             
             # Node Info (Name, ID)
-            node_label = tk.Label(node_frame, text=f"{node.name} (ID: {node.node_id})", font=("Arial", 10, "bold"))
+            node_label = tk.Label(node_frame, text=f"{node.name} ({node.node_id})", font=("Arial", 10, "bold"),fg=self.colors_names[index-1][1])
             node_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=5)
+            
+            # Button to run a table for sequences of setpoints
+            open_table_button = tk.Button(node_frame, text="Program", command=self.sequence_of_setpoints_table)
+            open_table_button.pack(row=0, column=2, pady=10)
 
             # Temperature Display and Button
             temp_label = tk.Label(node_frame, text=f"Temp: {node.temperature} °C", font=("Arial", 10))
@@ -157,7 +164,7 @@ class FlowControllerApp:
             move_entry.grid(row=4, column=1, padx=5, pady=2)
             # move_entry.insert(0, "0")  # Initial value
             scale = tk.Scale(node_frame, from_=0, to=32767, orient=tk.HORIZONTAL, label="Set Setpoint: 0-32000",length=200)
-            scale.grid(row=8, column=0, columnspan=3, padx=3, pady=3)
+            scale.grid(row=9, column=0, columnspan=3, padx=3, pady=3)
             scale.bind("<ButtonRelease-1>",lambda event, n=node, s=scale: n.setpoint(s.get()))
             # Send Button to set setpoint
             print(move_entry.get())
@@ -166,27 +173,68 @@ class FlowControllerApp:
             
             
             # ................................................................................................................
-            valve_entry = tk.Entry(node_frame, width=10)
-            valve_entry.grid(row=7, column=1, padx=5, pady=2)
-            valve_entry.insert(0, "0")  # Initial value
+            set_var = tk.StringVar(value="0")
+            speed_var = tk.StringVar(value="0")
             
-            valve_open_label = tk.Label(node_frame, text=f"Open Valve: {node.valve_open}", font=("Arial", 10))
-            valve_open_label.grid(row=6, column=0, sticky="w", padx=5, pady=2)
+            increment_count_set_label = tk.Label(node_frame, text=f"Set to: (0-32000)", font=("Arial", 10))
+            increment_count_set_label.grid(row=6, column=0, sticky="w", padx=5, pady=2)
             
-            valve_open_button = tk.Button(node_frame, text="Get open valve", command=lambda n=node, l=valve_open_label: n.update_open_valve(l))
-            valve_open_button.grid(row=6, column=1, padx=5, pady=5)
+            increment_count_speed_label = tk.Label(node_frame, text=f"Speed P/s", font=("Arial", 10))
+            increment_count_speed_label.grid(row=6, column=1, sticky="w", padx=5, pady=2)
             
-            send_button = tk.Button(node_frame, text="Send", command=lambda n=node, e=valve_entry: n.open_valve(e.get()))
-            send_button.grid(row=7, column=0, columnspan=2, pady=5)
+            increment_count_set_entry = tk.Entry(node_frame, width=10, textvariable=set_var)
+            increment_count_set_entry.grid(row=7, column=0, padx=5, pady=2)
+            
+            increment_count_speed_entry = tk.Entry(node_frame, width=10,textvariable=speed_var)
+            increment_count_speed_entry.grid(row=7, column=1, padx=5, pady=2)
+            
+            increment_count_run_button = tk.Button(node_frame, text="RUN", command=lambda n=node, e1=increment_count_set_entry, e2=increment_count_speed_entry: n.run_increment_count(e1.get(), e2.get()))
+            increment_count_run_button.grid(row=7, column=2, padx=5, pady=5)
+            
+            increment_count_time_label = tk.Label(node_frame, text=f"It will take approx:", font=("Arial", 10))
+            increment_count_time_label.grid(row=8, column=0, columnspan=2, sticky="w", padx=5, pady=2)
+            
+            increment_count_stop_button = tk.Button(node_frame, text="STOP", command=lambda n=node, e1=increment_count_set_entry, e2=increment_count_speed_entry: n.stop_increment_count())
+            increment_count_stop_button.grid(row=8, column=2, padx=5, pady=5)
+            
+            def update_estimated_time(*args):
+                try:
+                    set_val = int(set_var.get())
+                    speed_val = int(speed_var.get())
+                    if speed_val > 0:
+                        est_time = set_val / speed_val
+                        increment_count_time_label.config(text=f"It will take approx: {format_time(est_time)} s")
+                    else:
+                        increment_count_time_label.config(text="It will take approx: ∞")
+                except ValueError:
+                    increment_count_time_label.config(text="It will take approx: ?")
+                    
+            def format_time(seconds):
+                seconds = int(seconds)
+                days, seconds = divmod(seconds, 86400)
+                hours, seconds = divmod(seconds, 3600)
+                minutes, seconds = divmod(seconds, 60)
+                
+                parts = []
+                if days > 0:
+                    parts.append(f"{days} d")
+                if hours > 0:
+                    parts.append(f"{hours} h")
+                if minutes > 0:
+                    parts.append(f"{minutes} min")
+                parts.append(f"{seconds} s")
+                
+                return ' '.join(parts)
+            # Attach the trace
+            set_var.trace_add("write", update_estimated_time)
+            speed_var.trace_add("write", update_estimated_time)
             # ...................................................................................................................................
-            
             
             # Save reference to the frame
             self.node_frames.append(node_frame)
-
         # Enable Disconnect Button after connection
         self.disconnect_button.config(state=tk.NORMAL)
-
+        
     def connect_device(self):
         try:
             device = propar.instrument("COM9")
@@ -210,12 +258,219 @@ class FlowControllerApp:
             #  {'address': 6, 'type': 'DMFC', 'serial': 'M24207457A', 'id': '\x07SNM24207457A', 'channels': 1}]
 
     def disconnect_device(self):
-        if self.flow_device:
-            self.flow_device = None
-            messagebox.showinfo("Disconnected", "Successfully disconnected from the device.")
-        else:
-            messagebox.showwarning("Warning", "No device connected.")
-                    
+        self.auto_update_running = False  # Stop auto-update if it's running
+
+        # Stop animation
+        if self.ani:
+            self.ani.event_source.stop()
+
+        # Clear matplotlib plot
+        if self.ax:
+            self.ax.clear()
+            self.canvas.draw()
+
+        # Clear any node-related frames
+        for frame in self.node_frames:
+            frame.destroy()
+        self.node_frames.clear()
+
+        # Reset internal state
+        self.nodes = None
+        self.list_of_nodes.clear()
+        self.node_names.clear()
+        self.y_vals.clear()
+        self.x_vals.clear()
+        self.start_time = time.time()
+
+        # Destroy plot frame if it exists
+        if hasattr(self, 'plot_frame') and self.plot_frame:
+            self.plot_frame.destroy()
+            self.plot_frame = None
+
+        # Disable Disconnect button
+        self.disconnect_button.config(state=tk.DISABLED)
+
+        # Destroy all widgets and recreate the initial state
+        for widget in self.master.winfo_children():
+            widget.destroy()
+
+        self.create_widgets()
+        messagebox.showinfo("Disconnected", "Successfully disconnected and reset.")
+        
+    def show_node_rename_table(self):
+        table_window = tk.Toplevel(self.master)
+        table_window.title("Rename Nodes")
+
+        header1 = tk.Label(table_window, text="Current Name", font=("Arial", 10, "bold"))
+        header1.grid(row=0, column=0, padx=5, pady=5)
+
+        header2 = tk.Label(table_window, text="New Name", font=("Arial", 10, "bold"))
+        header2.grid(row=0, column=1, padx=5, pady=5)
+
+        entry_fields = []
+        for idx, node in enumerate(self.node_names):
+            current_name_label=tk.Label(table_window, text=node[idx])
+            current_name_label.grid(row=idx+1, column=0, padx=10, pady=5, sticky="w")
+
+            new_name_entry = tk.Entry(table_window, width=20)
+            new_name_entry.grid(row=idx+1, column=1, padx=10, pady=5)
+            
+            entry_fields.append(new_name_entry)
+        save_button=tk.Button(table_window, text="Save",command=lambda list=entry_fields: self.save_new_names(list))
+        save_button.grid(row=len(self.node_names+1), column=1, padx=5, pady=5)
+    def save_new_names(self,list_of_entries):
+        for i in range(len(self.node_names)):
+            self.list_of_nodes[i].node_id=list_of_entries[i]
+    def sequence_of_setpoints_table(self):
+        program_table=tk.Toplevel(self.master)
+        program_table.title("Seq control table")
+        
+        header_choose = tk.Label(program_table, text="Program type", font=("Arial", 10, "bold")).grid(row=0, column=0, padx=5, pady=5)
+        header_left = tk.Label(program_table, text="Setpoint (0-32k)", font=("Arial", 10, "bold")).grid(row=0, column=1, padx=5, pady=5)
+        header_mid = tk.Label(program_table, text="Speed P/s", font=("Arial", 10, "bold")).grid(row=0, column=2, padx=5, pady=5)
+        header_right = tk.Label(program_table, text="Duration s", font=("Arial", 10, "bold")).grid(row=0, column=3, padx=5, pady=5)
+        
+        program_types_config = {
+            "Ramp (Rate)":    {"Setpoint": True, "Rate": True,  "Duration": False},
+            "Ramp (Time)":    {"Setpoint": True, "Rate": False, "Duration": True},
+            "Dwell":          {"Setpoint": True, "Rate": False, "Duration": True},
+            "Step":           {"Setpoint": True, "Rate": False, "Duration": False},
+            # Add more types if needed, e.g., an empty row type
+            "--- Select ---": {"Setpoint": False, "Rate": False, "Duration": False} # Initial placeholder
+        }
+        self.program_types=list(program_types_config.keys())
+        self.program_rows_data = []
+
+        num_rows_to_create = 8
+        for i in range(num_rows_to_create):
+            row_index = i + 1
+            row_widgets = {}
+
+            type_var = tk.StringVar(program_table)
+            type_var.set(self.program_types[0]) # Set initial value
+
+            # --- Using command with a lambda ---
+            # The lambda receives the selected_value from OptionMenu's command
+            # and then explicitly passes it along with the row_widgets to update_row_state.
+            type_dropdown = tk.OptionMenu(program_table, type_var, *self.program_types,
+                                          command=lambda selected_val, widgets=row_widgets:
+                                              self.update_row_state(selected_val, widgets, program_types_config))
+            type_dropdown.grid(row=row_index, column=0, padx=5, pady=2, sticky="ew")
+            row_widgets["type_var"] = type_var # Still useful for getting current value if needed later
+            row_widgets["type_dropdown"] = type_dropdown # Store for reference
+
+            # ... (entry fields, same as before) ...
+            setpoint_entry = tk.Entry(program_table, width=15)
+            setpoint_entry.grid(row=row_index, column=1, padx=5, pady=2)
+            row_widgets["setpoint_entry"] = setpoint_entry
+
+            rate_entry = tk.Entry(program_table, width=15)
+            rate_entry.grid(row=row_index, column=2, padx=5, pady=2)
+            row_widgets["rate_entry"] = rate_entry
+
+            duration_entry = tk.Entry(program_table, width=15)
+            duration_entry.grid(row=row_index, column=3, padx=5, pady=2)
+            row_widgets["duration_entry"] = duration_entry
+            
+            self.program_rows_data.append(row_widgets)
+
+            # Initialize the state of the row based on the initial selection
+            self.update_row_state(type_var.get(), row_widgets, program_types_config)
+
+        # --- Program Parameters Section (below the main table) ---
+        # Adjust row index for placement
+        params_start_row = num_rows_to_create + 1
+        tk.Label(program_table, text="Program Parameters", font=("Arial", 10, "bold")).grid(row=params_start_row, column=0, columnspan=2, padx=5, pady=10, sticky="w")
+
+        self.continuous_cycling_var = tk.BooleanVar(program_table)
+        continuous_cycling_check = tk.Checkbutton(program_table, text="Continuous Cycling", variable=self.continuous_cycling_var)
+        continuous_cycling_check.grid(row=params_start_row + 1, column=0, columnspan=2, padx=5, pady=2, sticky="w")
+
+        self.holdback_var = tk.BooleanVar(program_table)
+        holdback_check = tk.Checkbutton(program_table, text="Holdback", variable=self.holdback_var)
+        holdback_check.grid(row=params_start_row + 2, column=0, columnspan=2, padx=5, pady=2, sticky="w")
+
+        tk.Label(program_table, text="Program Cycles:").grid(row=params_start_row + 1, column=2, padx=5, pady=2, sticky="w")
+        self.program_cycles_entry = tk.Entry(program_table, width=10)
+        self.program_cycles_entry.grid(row=params_start_row + 1, column=3, padx=5, pady=2, sticky="w")
+        self.program_cycles_entry.insert(0, "1") # Default value from image
+
+        tk.Label(program_table, text="Holdback Band °C:").grid(row=params_start_row + 2, column=2, padx=5, pady=2, sticky="w")
+        self.holdback_band_entry = tk.Entry(program_table, width=10)
+        self.holdback_band_entry.grid(row=params_start_row + 2, column=3, padx=5, pady=2, sticky="w")
+        self.holdback_band_entry.insert(0, "1.0") # Default value from image
+
+        tk.Label(program_table, text="Time Units:").grid(row=params_start_row + 3, column=2, padx=5, pady=2, sticky="w")
+        self.time_units_var = tk.StringVar(program_table)
+        self.time_units_var.set("s") # Default
+        time_units_options = ["s", "min", "hr"] # From image, 's' is default
+        time_units_dropdown = tk.OptionMenu(program_table, self.time_units_var, *time_units_options)
+        time_units_dropdown.grid(row=params_start_row + 3, column=3, padx=5, pady=2, sticky="w")
+
+
+        # --- Control Buttons (Run, Stop, Hold, Load, Save) ---
+        button_row = params_start_row + 4
+        tk.Button(program_table, text="Run").grid(row=button_row, column=0, padx=5, pady=10)
+        tk.Button(program_table, text="Stop").grid(row=button_row, column=1, padx=5, pady=10)
+        tk.Button(program_table, text="Hold").grid(row=button_row, column=2, padx=5, pady=10)
+        tk.Button(program_table, text="Load...").grid(row=button_row + 1, column=1, padx=5, pady=5)
+        tk.Button(program_table, text="Save...").grid(row=button_row + 1, column=2, padx=5, pady=5)
+
+
+    def update_row_state(self, selected_type, row_widgets, config):
+        """
+        Updates the state (enabled/disabled) of entry widgets in a row
+        based on the selected program type.
+        """
+        if selected_type not in config:
+            print(f"Warning: Configuration for type '{selected_type}' not found.")
+            return
+
+        type_config = config[selected_type]
+
+        # Update Setpoint entry
+        state_setpoint = 'normal' if type_config["Setpoint"] else 'disabled'
+        row_widgets["setpoint_entry"].config(state=state_setpoint)
+
+        # Update Rate entry
+        state_rate = 'normal' if type_config["Rate"] else 'disabled'
+        row_widgets["rate_entry"].config(state=state_rate)
+
+        # Update Duration entry
+        state_duration = 'normal' if type_config["Duration"] else 'disabled'
+        row_widgets["duration_entry"].config(state=state_duration)
+
+
+    def get_program_data(self):
+        """
+        A placeholder function to show how you'd retrieve all the data
+        from the created table.
+        """
+        print("--- Retrieving Program Data ---")
+        program_segments = []
+        for row in self.program_rows_data:
+            segment_type = row["type_var"].get()
+            setpoint = row["setpoint_entry"].get()
+            rate = row["rate_entry"].get()
+            duration = row["duration_entry"].get()
+
+            # You'd add validation here (e.g., convert to float, check ranges)
+            program_segments.append({
+                "type": segment_type,
+                "setpoint": setpoint,
+                "rate": rate,
+                "duration": duration
+            })
+            print(f"Segment: Type={segment_type}, Setpoint={setpoint}, Rate={rate}, Duration={duration}")
+
+        print("\n--- Program Parameters ---")
+        print(f"Continuous Cycling: {self.continuous_cycling_var.get()}")
+        print(f"Holdback: {self.holdback_var.get()}")
+        print(f"Program Cycles: {self.program_cycles_entry.get()}")
+        print(f"Holdback Band °C: {self.holdback_band_entry.get()}")
+        print(f"Time Units: {self.time_units_var.get()}")
+
+        
     def animation(self,i):
         current_time=time.time()-self.start_time
         self.x_vals.append(current_time)

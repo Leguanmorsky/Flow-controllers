@@ -16,6 +16,7 @@ class Node:
         self.valve_open=valve_open
         self.CSV=CSV
         self.writer=writer
+        self.stop_count=False
 
     def update_temperature(self,label):
             try:
@@ -82,6 +83,23 @@ class Node:
             messagebox.showerror("Error", f"Failed to open valve: {e}")
             
 # .............................................................................................................................
+    def run_increment_count(self,set_value, speed):
+        self.stop_count=False
+        increment=speed*2 # we will trigger the setpoint every 2 seconds
+        if set_value < self.fsetpoint: # we will be decreasing
+            while self.stop_count==False and set_value < self.fsetpoint:
+                self.setpoint(self.fsetpoint-increment)
+                time.sleep(2)
+        elif set_value > self.fsetpoint: # we will be increasing
+            while self.stop_count==False and set_value > self.fsetpoint:
+                self.setpoint(self.fsetpoint+increment)
+                time.sleep(2)
+        else:
+            messagebox.showinfo("Set value has been already satisfied!")
+            
+    def stop_increment_count(self):
+        self.stop_count=True
+# ..............................................................................................................................
     # def initialize_csv(self,spec_node):
     #     # Open the file once and keep the file object in memory
     #     fieldname=["setpoint","measure","valve_output"]

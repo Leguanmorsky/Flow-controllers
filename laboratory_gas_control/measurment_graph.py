@@ -1,4 +1,3 @@
-import random
 import time
 import csv
 from itertools import count
@@ -39,7 +38,7 @@ y_vals = [[[] for _ in range(len(subplots_names))] for _ in range(len(node_names
 colors_names=[["#6495ED","#0000FF","#00008B"],["#7FFFD4","#00FF00","#008000"],["#F4A460","#FFFF00","#8B0000"],["#EE82EE","#FF00FF","#8B008B"]]
 labels=[[f"Node {n+1}-{subplots_names[v]}" for n in range(len(node_names))] for v in range(plots_in_node)]
 
-fig, ax = plt.subplots(figsize=(14, 6))
+fig, ax = plt.subplots(figsize=(10, 5))
 ax.set_ylim(-10, ymax)  # Lock y-axis
 
 def animation(i):
@@ -68,7 +67,8 @@ def animation(i):
                     color=colors_names[node][line],
                     linewidth=1.5)
 
-    # Optional: Label axes
+    ax.legend(loc='upper left', fontsize=8, ncol=3)
+    ax.grid(True)
     
 ani=FuncAnimation(plt.gcf(),animation,interval=interval, cache_frame_data=False)
 
