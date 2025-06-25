@@ -5,7 +5,7 @@ import csv
 
 
 class Node:
-    def __init__(self, node_id, name, flow_device, temperature, valve_output, fmeasure,fsetpoint,valve_open, CSV,writer):
+    def __init__(self, node_id, name, flow_device, temperature, valve_output, fmeasure,fsetpoint,valve_open,tk_ref):
         self.node_id = node_id
         self.name = name
         self.flow_device=flow_device
@@ -14,9 +14,9 @@ class Node:
         self.fmeasure = fmeasure
         self.fsetpoint=fsetpoint
         self.valve_open=valve_open
-        self.CSV=CSV
-        self.writer=writer
-        self.stop_count=False
+        self.tk_ref=tk_ref
+        self.stop_count=True
+
 
     def update_temperature(self,label):
             try:
@@ -83,9 +83,42 @@ class Node:
             messagebox.showerror("Error", f"Failed to open valve: {e}")
             
 # .............................................................................................................................
-    def run_increment_count(self,set_value, speed):
+    def run_increment_count(self, set_value, speed):
+        self.stop_count = False
+        self.target_value = int(set_value)
+        self.increment = float(speed) * 2  # every 2 seconds we add this
+        self._increment_loop()
+
+    def _increment_loop(self):
+        if self.stop_count:
+            return
+
+        current = self.fsetpoint
+        target = self.target_value
+        inc = self.increment
+
+        if target < current:
+            new_value = current - inc
+            if new_value < target:
+                new_value = target
+        elif target > current:
+            new_value = current + inc
+            if new_value > target:
+                new_value = target
+        else:
+            messagebox.showinfo("Info", "Set value has already been satisfied!")
+            return
+
+        self.setpoint(new_value)
+
+        if new_value != target:
+            # Schedule next increment after 2000 ms (2 seconds)
+            self.tk_ref.after(2000, self._increment_loop)
+
+    """ def run_increment_coun(self,set_value, speed):
         self.stop_count=False
-        increment=speed*2 # we will trigger the setpoint every 2 seconds
+        set_value=int(set_value)
+        increment=float(speed)*2 # we will trigger the setpoint every 2 seconds
         if set_value < self.fsetpoint: # we will be decreasing
             while self.stop_count==False and set_value < self.fsetpoint:
                 self.setpoint(self.fsetpoint-increment)
@@ -95,7 +128,7 @@ class Node:
                 self.setpoint(self.fsetpoint+increment)
                 time.sleep(2)
         else:
-            messagebox.showinfo("Set value has been already satisfied!")
+            messagebox.showinfo("Set value has been already satisfied!") """
             
     def stop_increment_count(self):
         self.stop_count=True

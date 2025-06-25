@@ -13,7 +13,7 @@ class FlowControllerApp:
     def __init__(self, master):
         self.master = master
         self.master.title("Flow Controller")
-        self.master.geometry("1700x850")
+        self.master.geometry("1900x950")
         self.nodes=None
         self.list_of_nodenames=[]
         self.list_of_nodes=[]
@@ -54,9 +54,9 @@ class FlowControllerApp:
         if self.auto_update_running:
             for node_frame, node in zip(self.node_frames, self.list_of_nodes):
                 # Get UI elements
-                temp_label = node_frame.winfo_children()[1]  
-                valve_output_label = node_frame.winfo_children()[3]  
-                massF_label = node_frame.winfo_children()[5]  
+                temp_label = node_frame.winfo_children()[2]  
+                valve_output_label = node_frame.winfo_children()[4]  
+                massF_label = node_frame.winfo_children()[6]
                 # increment_count_label = node_frame.winfo_children()[7]
 
                 # Update displayed values
@@ -98,10 +98,10 @@ class FlowControllerApp:
         self.total_lines=len(self.node_names)*self.plots_in_node
         self.x_vals=[]
         self.y_vals = [[[] for _ in range(len(self.subplots_names))] for _ in range(len(self.node_names))]
-        self.colors_names=[["#6495ED","#0000FF","#00008B"],
-                           ["#7FFFD4","#00FF00","#008000"],
-                           ["#F4A460","#FFFF00","#8B0000"],
-                           ["#EE82EE","#FF00FF","#8B008B"]]
+        self.colors_names=[["#6495ED","#0000FF","#4169E1"],
+                           ["#7FFFD4","#008000","#98FB98"],
+                           ["#FFDAB9","#FF0000","#FFA07A"],
+                           ["#EE82EE","#FF00FF","#DDA0DD"]]
         self.labels=[[f"{self.node_names[v]}-{self.subplots_names[n]}" for n in range(len(self.subplots_names))] for v in range(len(self.node_names))]
         
         
@@ -109,7 +109,7 @@ class FlowControllerApp:
         self.update_button.grid(row=0, column=3, pady=10)
         
         open_table_button = tk.Button(self.master, text="Rename Nodes", command=self.show_node_rename_table)
-        open_table_button.pack(row=0, column=4, pady=10)
+        open_table_button.grid(row=0, column=4, pady=10)
         
          # Create a frame specifically for the matplotlib plot
         self.plot_frame = tk.Frame(self.master, bd=2, relief=tk.RIDGE)
@@ -129,11 +129,11 @@ class FlowControllerApp:
             
             # Node Info (Name, ID)
             node_label = tk.Label(node_frame, text=f"{node.name} ({node.node_id})", font=("Arial", 10, "bold"),fg=self.colors_names[index-1][1])
-            node_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=5)
+            node_label.grid(row=0, column=0, sticky="w", padx=5, pady=5)
             
             # Button to run a table for sequences of setpoints
             open_table_button = tk.Button(node_frame, text="Program", command=self.sequence_of_setpoints_table)
-            open_table_button.pack(row=0, column=2, pady=10)
+            open_table_button.grid(row=0, column=1, pady=10)
 
             # Temperature Display and Button
             temp_label = tk.Label(node_frame, text=f"Temp: {node.temperature} °C", font=("Arial", 10))
@@ -243,7 +243,7 @@ class FlowControllerApp:
             # Node 1: {'address': 4, 'type': 'DMFC', 'serial': 'M24207457D', 'id': '\x07SNM24207457D', 'channels': 1}
             if self.nodes:
                 for n in range(0,len(self.nodes)):
-                    node = nd.Node(self.nodes[n]["id"], f"Node_{self.nodes[n]['address']}",propar.instrument("COM9",self.nodes[n]['address']), None, None, None,0,None,None,None)
+                    node = nd.Node(self.nodes[n]["id"], f"Node_{self.nodes[n]['address']}",propar.instrument("COM9",self.nodes[n]['address']), None, None, None,0,None,self.master)
                     self.node_names.append(node.name)
                     self.list_of_nodes.append(node)
                     # self.list_of_nodes = [node4, node5, node6, node33]
@@ -309,18 +309,23 @@ class FlowControllerApp:
 
         entry_fields = []
         for idx, node in enumerate(self.node_names):
-            current_name_label=tk.Label(table_window, text=node[idx])
+            current_name_label=tk.Label(table_window, text=node)
             current_name_label.grid(row=idx+1, column=0, padx=10, pady=5, sticky="w")
 
             new_name_entry = tk.Entry(table_window, width=20)
             new_name_entry.grid(row=idx+1, column=1, padx=10, pady=5)
             
             entry_fields.append(new_name_entry)
+
         save_button=tk.Button(table_window, text="Save",command=lambda list=entry_fields: self.save_new_names(list))
-        save_button.grid(row=len(self.node_names+1), column=1, padx=5, pady=5)
+        save_button.grid(row=len(self.node_names)+1, column=1, padx=5, pady=5)
+
     def save_new_names(self,list_of_entries):
         for i in range(len(self.node_names)):
-            self.list_of_nodes[i].node_id=list_of_entries[i]
+            new_name = list_of_entries[i].get()
+            self.list_of_nodes[i].node_id = new_name
+        print(f"{self.list_of_nodes[0].node_id},{self.list_of_nodes[1].node_id},{self.list_of_nodes[2].node_id}")
+
     def sequence_of_setpoints_table(self):
         program_table=tk.Toplevel(self.master)
         program_table.title("Seq control table")
@@ -505,7 +510,7 @@ class FlowControllerApp:
                         color=self.colors_names[node][line],
                         linewidth=1.5)
 
-        self.ax.legend(loc='upper left', fontsize=8, ncol=len(self.node_names))
+        self.ax.legend(loc='upper left', fontsize=6, ncol=len(self.node_names))
         self.ax.grid(True)
         
     def setup_plot(self):
