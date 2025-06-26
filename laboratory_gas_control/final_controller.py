@@ -6,6 +6,7 @@ from itertools import count
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import os
 import csv
 import time
 
@@ -13,10 +14,15 @@ class FlowControllerApp:
     def __init__(self, master):
         self.master = master
         self.master.title("Flow Controller")
-        self.master.geometry("1900x950")
+        self.master.geometry("1700x900")
+
+        self.button_frame=None # Frame for the upper buttons
+
         self.nodes=None
         self.list_of_nodenames=[]
         self.list_of_nodes=[]
+
+        self.node_id_labels_rename_function=[]
         self.auto_update_running = False  # Flag to track auto-updating
         
         self.node_names=[]
@@ -80,11 +86,14 @@ class FlowControllerApp:
             self.auto_update()  # Start the update loop
 
     def create_widgets(self):
-        self.connect_button = tk.Button(self.master, text="Connect", command=self.connect_device)
-        self.connect_button.grid(row=0, column=0, padx=10, pady=10)
+        self.button_frame = tk.Frame(self.master)
+        self.button_frame.grid(row=0, column=0, columnspan=99, sticky="w", padx=10, pady=10)
 
-        self.disconnect_button = tk.Button(self.master, text="Disconnect", command=self.disconnect_device, state=tk.DISABLED)
-        self.disconnect_button.grid(row=0, column=1, padx=10, pady=10)
+        self.connect_button = tk.Button(self.button_frame, text="Connect",bg="green",font=("Arial", 10, "bold"), command=self.connect_device)
+        self.connect_button.pack(side="left", padx=5)
+
+        self.disconnect_button = tk.Button(self.button_frame, text="Disconnect",bg="red",font=("Arial", 10, "bold"), command=self.disconnect_device, state=tk.DISABLED)
+        self.disconnect_button.pack(side="left", padx=5)
         # Placeholder for Node UI elements
         self.node_frames = []
 
@@ -105,11 +114,11 @@ class FlowControllerApp:
         self.labels=[[f"{self.node_names[v]}-{self.subplots_names[n]}" for n in range(len(self.subplots_names))] for v in range(len(self.node_names))]
         
         
-        self.update_button = tk.Button(self.master, text="Start Auto Update", command=self.toggle_auto_update)
-        self.update_button.grid(row=0, column=3, pady=10)
+        self.update_button = tk.Button(self.button_frame, text="Start Auto Update", command=self.toggle_auto_update)
+        self.update_button.pack(side="left",padx=5)
         
-        open_table_button = tk.Button(self.master, text="Rename Nodes", command=self.show_node_rename_table)
-        open_table_button.grid(row=0, column=4, pady=10)
+        open_table_button = tk.Button(self.button_frame, text="Rename Nodes", command=self.show_node_rename_table)
+        open_table_button.pack(side="left",padx=5)
         
          # Create a frame specifically for the matplotlib plot
         self.plot_frame = tk.Frame(self.master, bd=2, relief=tk.RIDGE)
@@ -130,6 +139,7 @@ class FlowControllerApp:
             # Node Info (Name, ID)
             node_label = tk.Label(node_frame, text=f"{node.name} ({node.node_id})", font=("Arial", 10, "bold"),fg=self.colors_names[index-1][1])
             node_label.grid(row=0, column=0, sticky="w", padx=5, pady=5)
+            self.node_id_labels_rename_function.append(node_label)
             
             # Button to run a table for sequences of setpoints
             open_table_button = tk.Button(node_frame, text="Program", command=self.sequence_of_setpoints_table)
@@ -175,7 +185,7 @@ class FlowControllerApp:
             # ................................................................................................................
             set_var = tk.StringVar(value="0")
             speed_var = tk.StringVar(value="0")
-            
+
             increment_count_set_label = tk.Label(node_frame, text=f"Set to: (0-32000)", font=("Arial", 10))
             increment_count_set_label.grid(row=6, column=0, sticky="w", padx=5, pady=2)
             
@@ -197,17 +207,17 @@ class FlowControllerApp:
             increment_count_stop_button = tk.Button(node_frame, text="STOP", command=lambda n=node, e1=increment_count_set_entry, e2=increment_count_speed_entry: n.stop_increment_count())
             increment_count_stop_button.grid(row=8, column=2, padx=5, pady=5)
             
-            def update_estimated_time(*args):
+            def update_estimated_time(label, var1, var2):
                 try:
-                    set_val = int(set_var.get())
-                    speed_val = int(speed_var.get())
+                    set_val = int(var1.get())
+                    speed_val = float(var2.get())
                     if speed_val > 0:
                         est_time = set_val / speed_val
-                        increment_count_time_label.config(text=f"It will take approx: {format_time(est_time)} s")
+                        label.config(text=f"It will take approx: {format_time(est_time)}")
                     else:
-                        increment_count_time_label.config(text="It will take approx: ∞")
+                        label.config(text="It will take approx: ∞")
                 except ValueError:
-                    increment_count_time_label.config(text="It will take approx: ?")
+                    label.config(text="It will take approx: ?")
                     
             def format_time(seconds):
                 seconds = int(seconds)
@@ -226,8 +236,8 @@ class FlowControllerApp:
                 
                 return ' '.join(parts)
             # Attach the trace
-            set_var.trace_add("write", update_estimated_time)
-            speed_var.trace_add("write", update_estimated_time)
+            set_var.trace_add("write", lambda *_, lbl=increment_count_time_label, v1=set_var, v2=speed_var: update_estimated_time(lbl, v1, v2))
+            speed_var.trace_add("write", lambda *_, lbl=increment_count_time_label, v1=set_var, v2=speed_var: update_estimated_time(lbl, v1, v2))
             # ...................................................................................................................................
             
             # Save reference to the frame
@@ -241,12 +251,24 @@ class FlowControllerApp:
             self.nodes=device.master.get_nodes()
             messagebox.showinfo("Connected", "Successfully connected to the device.")
             # Node 1: {'address': 4, 'type': 'DMFC', 'serial': 'M24207457D', 'id': '\x07SNM24207457D', 'channels': 1}
+
+            loaded_ids = []
+            file_path="laboratory_gas_control/node_ids.csv"
+            if os.path.exists(file_path):
+                with open("laboratory_gas_control/node_ids.csv", "r") as csvfile:
+                    reader = csv.DictReader(csvfile)
+                    for row in reader:
+                        new_id = row["New ids"]
+                        loaded_ids.append(new_id)
+            else:
+                loaded_ids = [self.nodes[n]["id"] for n in  range(0,len(self.nodes))]
             if self.nodes:
                 for n in range(0,len(self.nodes)):
-                    node = nd.Node(self.nodes[n]["id"], f"Node_{self.nodes[n]['address']}",propar.instrument("COM9",self.nodes[n]['address']), None, None, None,0,None,self.master)
+                    node = nd.Node(loaded_ids[n], f"Node_{self.nodes[n]['address']}",propar.instrument("COM9",self.nodes[n]['address']), None, None, None,0,None,self.master)
                     self.node_names.append(node.name)
                     self.list_of_nodes.append(node)
                     # self.list_of_nodes = [node4, node5, node6, node33]
+                    self.connect_button.config(state=tk.DISABLED)
                 self.update_ui_after_connection()
             else:
                 messagebox.showerror("Error", "No nodes detected.")
@@ -308,8 +330,8 @@ class FlowControllerApp:
         header2.grid(row=0, column=1, padx=5, pady=5)
 
         entry_fields = []
-        for idx, node in enumerate(self.node_names):
-            current_name_label=tk.Label(table_window, text=node)
+        for idx, node in enumerate(self.list_of_nodes):
+            current_name_label=tk.Label(table_window, text=node.node_id)
             current_name_label.grid(row=idx+1, column=0, padx=10, pady=5, sticky="w")
 
             new_name_entry = tk.Entry(table_window, width=20)
@@ -324,7 +346,14 @@ class FlowControllerApp:
         for i in range(len(self.node_names)):
             new_name = list_of_entries[i].get()
             self.list_of_nodes[i].node_id = new_name
-        print(f"{self.list_of_nodes[0].node_id},{self.list_of_nodes[1].node_id},{self.list_of_nodes[2].node_id}")
+
+        with open("laboratory_gas_control/node_ids.csv", "w", newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(["New ids"])
+            for idx, node_label in enumerate(self.node_id_labels_rename_function):
+                node_label.config(text=f"{self.list_of_nodes[idx].name} ({self.list_of_nodes[idx].node_id})")
+                writer.writerow([self.list_of_nodes[idx].node_id])
+        """ print(f"{self.list_of_nodes[0].node_id},{self.list_of_nodes[1].node_id},{self.list_of_nodes[2].node_id}") """
 
     def sequence_of_setpoints_table(self):
         program_table=tk.Toplevel(self.master)
@@ -400,17 +429,12 @@ class FlowControllerApp:
         self.program_cycles_entry.grid(row=params_start_row + 1, column=3, padx=5, pady=2, sticky="w")
         self.program_cycles_entry.insert(0, "1") # Default value from image
 
-        tk.Label(program_table, text="Holdback Band °C:").grid(row=params_start_row + 2, column=2, padx=5, pady=2, sticky="w")
-        self.holdback_band_entry = tk.Entry(program_table, width=10)
-        self.holdback_band_entry.grid(row=params_start_row + 2, column=3, padx=5, pady=2, sticky="w")
-        self.holdback_band_entry.insert(0, "1.0") # Default value from image
-
-        tk.Label(program_table, text="Time Units:").grid(row=params_start_row + 3, column=2, padx=5, pady=2, sticky="w")
+        tk.Label(program_table, text="Time Units:").grid(row=params_start_row + 2, column=2, padx=5, pady=2, sticky="w")
         self.time_units_var = tk.StringVar(program_table)
         self.time_units_var.set("s") # Default
         time_units_options = ["s", "min", "hr"] # From image, 's' is default
         time_units_dropdown = tk.OptionMenu(program_table, self.time_units_var, *time_units_options)
-        time_units_dropdown.grid(row=params_start_row + 3, column=3, padx=5, pady=2, sticky="w")
+        time_units_dropdown.grid(row=params_start_row + 2, column=3, padx=5, pady=2, sticky="w")
 
 
         # --- Control Buttons (Run, Stop, Hold, Load, Save) ---
@@ -472,7 +496,6 @@ class FlowControllerApp:
         print(f"Continuous Cycling: {self.continuous_cycling_var.get()}")
         print(f"Holdback: {self.holdback_var.get()}")
         print(f"Program Cycles: {self.program_cycles_entry.get()}")
-        print(f"Holdback Band °C: {self.holdback_band_entry.get()}")
         print(f"Time Units: {self.time_units_var.get()}")
 
         
