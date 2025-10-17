@@ -109,7 +109,7 @@ class FlowControllerApp:
         self.update_button.grid(row=0, column=3, pady=10)
         
         open_table_button = tk.Button(self.master, text="Rename Nodes", command=self.show_node_rename_table)
-        open_table_button.pack(row=0, column=4, pady=10)
+        open_table_button.grid(row=0, column=4, pady=10)
         
          # Create a frame specifically for the matplotlib plot
         self.plot_frame = tk.Frame(self.master, bd=2, relief=tk.RIDGE)
@@ -133,7 +133,7 @@ class FlowControllerApp:
             
             # Button to run a table for sequences of setpoints
             open_table_button = tk.Button(node_frame, text="Program", command=self.sequence_of_setpoints_table)
-            open_table_button.pack(row=0, column=2, pady=10)
+            open_table_button.grid(row=0, column=2, pady=10)
 
             # Temperature Display and Button
             temp_label = tk.Label(node_frame, text=f"Temp: {node.temperature} °C", font=("Arial", 10))
@@ -162,16 +162,45 @@ class FlowControllerApp:
 
             move_entry = tk.Entry(node_frame, width=10)
             move_entry.grid(row=4, column=1, padx=5, pady=2)
+
+            # Left Button (-)
+            left_button = tk.Button(node_frame, text="-10", command=lambda n=node, s=scale: adjust_setpoint(n, s, -10))
+            left_button.grid(row=9, column=0, padx=3, pady=3, sticky="e")
             # move_entry.insert(0, "0")  # Initial value
             scale = tk.Scale(node_frame, from_=0, to=32767, orient=tk.HORIZONTAL, label="Set Setpoint: 0-32000",length=200)
             scale.grid(row=9, column=0, columnspan=3, padx=3, pady=3)
             scale.bind("<ButtonRelease-1>",lambda event, n=node, s=scale: n.setpoint(s.get()))
+
+            # Right Button (+)
+            right_button = tk.Button(node_frame, text="+10", command=lambda n=node, s=scale: adjust_setpoint(n, s, 10))
+            right_button.grid(row=9, column=2, padx=3, pady=3, sticky="w")
             # Send Button to set setpoint
             print(move_entry.get())
             send_button = tk.Button(node_frame, text="Send setpoint", command=lambda n=node, e=move_entry: n.setpoint(e.get()))
             send_button.grid(row=5, column=0, columnspan=2, pady=5)
             
-            
+            # --- Helper Function (place this with your other functions) ---
+            def adjust_setpoint(node, scale, amount):
+                """
+                Adjusts the scale's value by a given amount, ensures it stays
+                within bounds, updates the scale widget, and calls the node's
+                setpoint method.
+                """
+                # Get the scale's limits
+                lower_limit = scale.cget("from")
+                upper_limit = scale.cget("to")
+                
+                # Calculate the new value
+                new_val = scale.get() + amount
+                
+                # Clamp the value to stay within the scale's range
+                new_val = max(lower_limit, min(new_val, upper_limit))
+                
+                # Update the scale's visual position
+                scale.set(new_val)
+                
+                # Call your original function with the new value
+                node.setpoint(new_val)
             # ................................................................................................................
             set_var = tk.StringVar(value="0")
             speed_var = tk.StringVar(value="0")
