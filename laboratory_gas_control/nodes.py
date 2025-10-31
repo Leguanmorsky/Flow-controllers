@@ -15,6 +15,7 @@ class Node:
         self.fsetpoint=fsetpoint
         self.valve_open=valve_open
         self.tk_ref=tk_ref
+        self.gui_setpoint_var = None
         self.stop_count=True
 
 
@@ -47,11 +48,25 @@ class Node:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update valve output: {e}")
             
-    def setpoint(self,value):
+    def setpoint(self, value):
         try:
-            value = int(value)
-            self.flow_device.setpoint = value
-            self.fsetpoint=value
+            float_value = float(value)
+            
+            # 2. Convert to int for the device and GUI
+            int_value = int(float_value)
+            
+            # 3. Store the PRECISE float value for the _increment_loop
+            self.fsetpoint = float_value  # <-- THE CRITICAL FIX
+            
+            # 4. Send the INTEGER value to the device
+            self.flow_device.setpoint = int_value
+            
+            print(f"Setpoint set-{self.name}: {int_value} (from precise {float_value})")
+
+            # 5. (GUI SYNC) Update the GUI's StringVar with the INTEGER value
+            if hasattr(self, 'gui_setpoint_var') and self.gui_setpoint_var:
+                self.gui_setpoint_var.set(str(int_value))
+
             # Read the inserted parameter back to be sure
             read_back = self.flow_device.readParameter(9) 
             print(f"Setpoint readback-{self.name}: {read_back}")
@@ -84,6 +99,7 @@ class Node:
             
 # .............................................................................................................................
     def run_increment_count(self, set_value, speed):
+        print(speed)
         self.stop_count = False
         self.target_value = int(set_value)
         self.increment = float(speed) * 2  # every 2 seconds we add this
@@ -93,27 +109,38 @@ class Node:
         if self.stop_count:
             return
 
-        current = self.fsetpoint
-        target = self.target_value
-        inc = self.increment
+        try:
+            # Convert self.fsetpoint (which is a string) to a float
+            current = float(self.fsetpoint)
 
-        if target < current:
-            new_value = current - inc
-            if new_value < target:
-                new_value = target
-        elif target > current:
-            new_value = current + inc
-            if new_value > target:
-                new_value = target
-        else:
-            messagebox.showinfo("Info", "Set value has already been satisfied!")
-            return
+            target = self.target_value
+            inc = self.increment
 
-        self.setpoint(new_value)
+            if target < current:
+                new_value = current - inc
+                if new_value < target:
+                    new_value = target
+            elif target > current:
+                new_value = current + inc
+                if new_value > target:
+                    new_value = target
+            else:
+                # This check should now work correctly since both are numbers
+                if current == target:
+                    messagebox.showinfo("Info", "Set value has already been satisfied!")
+                return
 
-        if new_value != target:
-            # Schedule next increment after 2000 ms (2 seconds)
-            self.tk_ref.after(2000, self._increment_loop)
+            # self.setpoint() will now receive a float
+            self.setpoint(new_value)
+
+            if new_value != target:
+                # Schedule next increment after 2000 ms (2 seconds)
+                self.tk_ref.after(2000, self._increment_loop)
+        
+        except ValueError:
+            messagebox.showerror("Error", f"Invalid current setpoint value: {self.fsetpoint}. Cannot perform increment.")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred in _increment_loop: {e}")
 
     """ def run_increment_coun(self,set_value, speed):
         self.stop_count=False

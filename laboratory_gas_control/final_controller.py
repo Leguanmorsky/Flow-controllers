@@ -9,6 +9,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import os
 import csv
 import time
+import numpy as np
 
 class FlowControllerApp:
     def __init__(self, master):
@@ -170,14 +171,40 @@ class FlowControllerApp:
             move_label = tk.Label(node_frame, text="Set setpoint: 0-32000", font=("Arial", 10))
             move_label.grid(row=4, column=0, sticky="w", padx=5, pady=2)
 
-            move_entry = tk.Entry(node_frame, width=10)
+            setpoint_var = tk.StringVar(value='0') # Default to '0'
+            node.gui_setpoint_var = setpoint_var
+            move_entry = tk.Entry(node_frame, width=10, textvariable=setpoint_var)
             move_entry.grid(row=4, column=1, padx=5, pady=2)
+            move_entry.bind("<Return>", lambda e, v=setpoint_var, n=node: update_setpoint_from_var(e, v, n)) # <-- Bind to <Return> key
             # move_entry.insert(0, "0")  # Initial value
-            scale = tk.Scale(node_frame, from_=0, to=32767, orient=tk.HORIZONTAL, label="Set Setpoint: 0-32000",length=200)
-            scale.grid(row=9, column=0, columnspan=3, padx=3, pady=3)
-            scale.bind("<ButtonRelease-1>",lambda event, n=node, s=scale: n.setpoint(s.get()))
+            scale_frame = tk.Frame(node_frame)
+            # Place this new frame on the left, spanning 3 columns of the parent node_frame
+            scale_frame.grid(row=9, column=0, columnspan=3, padx=0, pady=3, sticky='w')
+
+            # 2. Place the scale and buttons INSIDE the new scale_frame
+            
+            scale_frame = tk.Frame(node_frame)
+            # Place this new frame on the left, spanning 3 columns of the parent node_frame
+            scale_frame.grid(row=9, column=0, columnspan=3, padx=0, pady=3, sticky='w')
+
+            # 2. Place the scale and buttons INSIDE the new scale_frame
+            
+            # Scale length set to 200, master is now scale_frame
+            scale = tk.Scale(scale_frame, from_=0, to=32767, orient=tk.HORIZONTAL, 
+                            label="Setpoint Control:", length=200, 
+                            variable=setpoint_var, showvalue=0) # <-- Use shared var, hide default value
+            
+            # Place scale in column 1 of scale_frame
+            scale.grid(row=0, column=1, padx=0, pady=0) # No internal padding
+            scale.bind("<ButtonRelease-1>", lambda e, v=setpoint_var, n=node: update_setpoint_from_var(e, v, n)) # <-- Bind to mouse release
+            left_button = tk.Button(scale_frame, text="<", 
+                                    command=lambda v=setpoint_var, n=node: increment_scale(v, n, -10))
+            left_button.grid(row=0, column=0, padx=(5,0), pady=0, sticky='ns') 
+            right_button = tk.Button(scale_frame, text=">", 
+                                    command=lambda v=setpoint_var, n=node: increment_scale(v, n, 10))
+            right_button.grid(row=0, column=2, padx=(0,5), pady=0, sticky='ns')
+
             # Send Button to set setpoint
-            print(move_entry.get())
             send_button = tk.Button(node_frame, text="Send setpoint", command=lambda n=node, e=move_entry: n.setpoint(e.get()))
             send_button.grid(row=5, column=0, columnspan=2, pady=5)
             
@@ -207,16 +234,36 @@ class FlowControllerApp:
             increment_count_stop_button = tk.Button(node_frame, text="STOP", command=lambda n=node, e1=increment_count_set_entry, e2=increment_count_speed_entry: n.stop_increment_count())
             increment_count_stop_button.grid(row=8, column=2, padx=5, pady=5)
             
-            def update_estimated_time(label, var1, var2):
+            def update_estimated_time(label, var1, var2, node_obj):
                 try:
                     set_val = int(var1.get())
                     speed_val = float(var2.get())
+
+                    # --- FIX ---
+                    # Get the current value from the node object
+                    try:
+                        # We must convert fsetpoint, as it's likely a string
+                        current_val = float(node_obj.fsetpoint)
+                    except (ValueError, TypeError, AttributeError):
+                        # Handle cases where fsetpoint is None or not set yet
+                        label.config(text="It will take approx: ?")
+                        return
+
+                    # Calculate the absolute difference
+                    difference = abs(set_val - current_val)
+                    # --- END FIX ---
+                    
                     if speed_val > 0:
-                        est_time = set_val / speed_val
+                        # Your logic for incrementing is float(speed) * 2 every 2 seconds,
+                        # which simplifies to an effective speed of float(speed) units/sec.
+                        # So, this calculation is correct.
+                        est_time = difference / speed_val 
                         label.config(text=f"It will take approx: {format_time(est_time)}")
                     else:
                         label.config(text="It will take approx: ∞")
+                
                 except ValueError:
+                    # This catches errors from var1.get() or var2.get()
                     label.config(text="It will take approx: ?")
                     
             def format_time(seconds):
@@ -235,9 +282,45 @@ class FlowControllerApp:
                 parts.append(f"{seconds} s")
                 
                 return ' '.join(parts)
+            def increment_scale(var, node_obj, amount):
+                try:
+                    # Get value from the shared variable
+                    current_val = float(var.get())
+                except ValueError:
+                    current_val = 0
+                
+                new_val = current_val + amount
+                
+                # Clamp the value within the scale's bounds (0 to 32767)
+                if new_val > 32767:
+                    new_val = 32767
+                elif new_val < 0:
+                    new_val = 0
+                var.set(str(new_val))
+                node_obj.setpoint(new_val)
+            
+            def update_setpoint_from_var(event, var, node_obj):
+                try:
+                    new_val = float(var.get())
+                    
+                    # Clamp value just in case
+                    if new_val > 32767: 
+                        new_val = 32767
+                    elif new_val < 0: 
+                        new_val = 0
+                    
+                    # Update variable again in case it was clamped
+                    var.set(str(new_val)) 
+                    
+                    # Send the clamped value to the correct node
+                    node_obj.setpoint(new_val)
+                except ValueError:
+                    # On invalid input (e.g., "abc"), reset to 0
+                    var.set('0')
+                    node_obj.setpoint(0)
             # Attach the trace
-            set_var.trace_add("write", lambda *_, lbl=increment_count_time_label, v1=set_var, v2=speed_var: update_estimated_time(lbl, v1, v2))
-            speed_var.trace_add("write", lambda *_, lbl=increment_count_time_label, v1=set_var, v2=speed_var: update_estimated_time(lbl, v1, v2))
+            set_var.trace_add("write", lambda *_, lbl=increment_count_time_label, v1=set_var, v2=speed_var, n=node: update_estimated_time(lbl, v1, v2, n))
+            speed_var.trace_add("write", lambda *_, lbl=increment_count_time_label, v1=set_var, v2=speed_var, n=node: update_estimated_time(lbl, v1, v2, n))
             # ...................................................................................................................................
             
             # Save reference to the frame
@@ -511,7 +594,15 @@ class FlowControllerApp:
         for node_index, node in enumerate(self.list_of_nodes):  # self.nodes are your node objects
             for line_index, subplot_name in enumerate(self.subplots_names):
                 value = getattr(node, self.subplot_to_attr[subplot_name])  # You need to define this logic
-                self.y_vals[node_index][line_index].append(value)
+                if value is None:
+                    self.y_vals[node_index][line_index].append(np.nan)
+                else:
+                    # You should also convert to float here to be safe
+                    try:
+                        self.y_vals[node_index][line_index].append(float(value))
+                    except (ValueError, TypeError):
+                        # If conversion fails, append nan
+                        self.y_vals[node_index][line_index].append(np.nan)
                 # self.seek_csv(self.node_names[node],self.subplots_names[line])
         self.ax.clear()
         self.ax.set_ylim(-500, self.ymax)
