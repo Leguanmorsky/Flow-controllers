@@ -8,6 +8,44 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import csv
 import time
+import os
+import serial.tools.list_ports
+
+DEFAULT_PORT = "COM9"
+
+def close_port(port):
+    """Closes the serial port opened by propar and forgets the cached master."""
+    master = propar._PROPAR_MASTERS.pop(port, None)
+    if master:
+        try:
+            master.stop()
+        except Exception:
+            pass
+
+def find_port():
+    """Returns (port, nodes) of the first COM port with Bronkhorst nodes.
+    Order: FLOW_COM_PORT env var, COM9, then every other available port.
+    Bluetooth serial ports are skipped - opening them can hang or crash Python."""
+    ports = serial.tools.list_ports.comports()
+    available = [p.device for p in ports]
+    scanned = [p.device for p in ports if "BTHENUM" not in (p.hwid or "").upper() and "bluetooth" not in (p.description or "").lower()]
+    forced = os.environ.get("FLOW_COM_PORT")
+    candidates = [forced] + ([DEFAULT_PORT] if DEFAULT_PORT in scanned else []) + scanned
+    tried = []
+    for port in candidates:
+        if not port or port in tried:
+            continue
+        tried.append(port)
+        try:
+            nodes = propar.instrument(port).master.get_nodes()
+            if nodes:
+                return port, nodes
+        except Exception:
+            pass
+        close_port(port)
+    raise Exception(f"No Bronkhorst device found (tried: {', '.join(tried) or 'none'}; "
+                    f"available ports: {', '.join(available) or 'none'}). "
+                    f"Check the USB cable/driver or start with: run.bat COMx")
 
 class FlowControllerApp:
     def __init__(self, master):
@@ -164,11 +202,12 @@ class FlowControllerApp:
             move_entry.grid(row=4, column=1, padx=5, pady=2)
 
             # Left Button (-)
-            left_button = tk.Button(node_frame, text="-10", command=lambda n=node, s=scale: adjust_setpoint(n, s, -10))
+            left_button = tk.Button(node_frame, text="-10")
             left_button.grid(row=9, column=0, padx=3, pady=3, sticky="e")
             # move_entry.insert(0, "0")  # Initial value
             scale = tk.Scale(node_frame, from_=0, to=32767, orient=tk.HORIZONTAL, label="Set Setpoint: 0-32000",length=200)
             scale.grid(row=9, column=0, columnspan=3, padx=3, pady=3)
+            left_button.config(command=lambda n=node, s=scale: adjust_setpoint(n, s, -10))
             scale.bind("<ButtonRelease-1>",lambda event, n=node, s=scale: n.setpoint(s.get()))
 
             # Right Button (+)
@@ -266,13 +305,14 @@ class FlowControllerApp:
         
     def connect_device(self):
         try:
-            device = propar.instrument("COM9")
-            self.nodes=device.master.get_nodes()
-            messagebox.showinfo("Connected", "Successfully connected to the device.")
+            self.port, self.nodes = find_port()
+            messagebox.showinfo("Connected", f"Successfully connected to the device ({self.port}).")
             # Node 1: {'address': 4, 'type': 'DMFC', 'serial': 'M24207457D', 'id': '\x07SNM24207457D', 'channels': 1}
+            self.node_names.clear()
+            self.list_of_nodes.clear()
             if self.nodes:
                 for n in range(0,len(self.nodes)):
-                    node = nd.Node(self.nodes[n]["id"], f"Node_{self.nodes[n]['address']}",propar.instrument("COM9",self.nodes[n]['address']), None, None, None,0,None,None,None)
+                    node = nd.Node(self.nodes[n]["id"], f"Node_{self.nodes[n]['address']}",propar.instrument(self.port,self.nodes[n]['address']), None, None, None,0,None,self.master)
                     self.node_names.append(node.name)
                     self.list_of_nodes.append(node)
                     # self.list_of_nodes = [node4, node5, node6, node33]
@@ -302,6 +342,11 @@ class FlowControllerApp:
         for frame in self.node_frames:
             frame.destroy()
         self.node_frames.clear()
+
+        # Release the COM port so Connect works again
+        if getattr(self, "port", None):
+            close_port(self.port)
+            self.port = None
 
         # Reset internal state
         self.nodes = None
@@ -338,7 +383,7 @@ class FlowControllerApp:
 
         entry_fields = []
         for idx, node in enumerate(self.node_names):
-            current_name_label=tk.Label(table_window, text=node[idx])
+            current_name_label=tk.Label(table_window, text=node)
             current_name_label.grid(row=idx+1, column=0, padx=10, pady=5, sticky="w")
 
             new_name_entry = tk.Entry(table_window, width=20)
@@ -346,10 +391,10 @@ class FlowControllerApp:
             
             entry_fields.append(new_name_entry)
         save_button=tk.Button(table_window, text="Save",command=lambda list=entry_fields: self.save_new_names(list))
-        save_button.grid(row=len(self.node_names+1), column=1, padx=5, pady=5)
+        save_button.grid(row=len(self.node_names)+1, column=1, padx=5, pady=5)
     def save_new_names(self,list_of_entries):
         for i in range(len(self.node_names)):
-            self.list_of_nodes[i].node_id=list_of_entries[i]
+            self.list_of_nodes[i].node_id=list_of_entries[i].get()
     def sequence_of_setpoints_table(self):
         program_table=tk.Toplevel(self.master)
         program_table.title("Seq control table")

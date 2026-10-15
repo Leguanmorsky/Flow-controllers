@@ -1,0 +1,6 @@
+# NOTE: the Bronkhorst library is "bronkhorst-propar" (import propar).
+# Do NOT install the PyPI package called just "propar" - it is an unrelated library.
+bronkhorst-propar==1.3.0
+matplotlib==3.11.2
+pandas==3.0.6
+pyserial==3.5
