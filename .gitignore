@@ -1,8 +1,7 @@
 .venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 
-# separate repositories kept next to this project
-AutoFlow/
-project-Anemoi/
-testing_parameters/
+logs/
+config/local.json

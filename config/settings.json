@@ -1,0 +1,5 @@
+{
+  "port": "auto",
+  "poll_hz": 4,
+  "history_minutes": 60
+}

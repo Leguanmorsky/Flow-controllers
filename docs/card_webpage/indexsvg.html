@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<script src="plotly-latest.min.js"></script>
+	<style>
+		button.vlvopen {
+			background-color: green;
+		}
+		
+		button.pwrsaveoff {
+			background-color: red;
+		}
+        #svgUI{
+           height: 62vh
+        }
+	</style>
+</head>
+
+<body onload="document.getElementById('vlvcheck').click()">
+
+<svg id="svgUI" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 414">
+	<defs>
+		<style>
+			.cls-1, .cls-12, .cls-13, .cls-18, .cls-2, .cls-3, .cls-4, .cls-5, .cls-6, .cls-8 {
+				fill: #c9c9c9;
+			}
+
+			.cls-1, .cls-10, .cls-11, .cls-12, .cls-13, .cls-14, .cls-15, .cls-16, .cls-17, .cls-18, .cls-2, .cls-24, .cls-27, .cls-29, .cls-3, .cls-30, .cls-33, .cls-34, .cls-35, .cls-36, .cls-37, .cls-4, .cls-5, .cls-6, .cls-7, .cls-8, .cls-9 {
+				stroke: #000;
+			}
+
+			.cls-1, .cls-12, .cls-13, .cls-15, .cls-16, .cls-17, .cls-18, .cls-2, .cls-27, .cls-3, .cls-30, .cls-33, .cls-34, .cls-35, .cls-36, .cls-37, .cls-4, .cls-5, .cls-6, .cls-8, .cls-9 {
+				stroke-linecap: square;
+				stroke-linejoin: round;
+			}
+			#buttons g:hover {
+				opacity: 0.5;
+				cursor: pointer;
+			}
+			.inactive {
+				opacity: 0.5;
+			}
+			.cls-1 {
+				stroke-width: 0.6px;
+			}
+
+			.cls-2 {
+				stroke-width: 0.67px;
+			}
+
+			.cls-3 {
+				stroke-width: 0.63px;
+			}
+
+			.cls-4 {
+				stroke-width: 0.51px;
+			}
+
+			.cls-5 {
+				stroke-width: 0.76px;
+			}
+
+			.cls-6 {
+				stroke-width: 0.64px;
+			}
+
+			.cls-35, .cls-7 {
+				fill: #fff;
+			}
+
+			.cls-14, .cls-18, .cls-36, .cls-7 {
+				stroke-width: 0.5px;
+			}
+
+			.cls-8 {
+				stroke-width: 0.75px;
+			}
+
+			.cls-9 {
+				stroke-width: 0.02px;
+			}
+
+			.cls-10, .cls-11 {
+				fill-rule: evenodd;
+			}
+
+			.cls-11 {
+				stroke-linecap: round;
+			}
+
+			.cls-12, .cls-17, .cls-27, .cls-30 {
+				stroke-width: 0.56px;
+			}
+
+			.cls-13 {
+				stroke-width: 0.59px;
+			}
+
+			.cls-14, .cls-24, .cls-29, .cls-30, .cls-34 {
+				fill: none;
+			}
+
+			.cls-15, .cls-41 {
+				fill: #1680c1;
+			}
+
+			.cls-15, .cls-16, .cls-33, .cls-34 {
+				stroke-width: 0.49px;
+			}
+
+			.cls-16, .cls-33, .cls-42 {
+				fill: #f60;
+			}
+
+			.cls-17, .cls-28, .cls-40 {
+				fill: #ef1414;
+			}
+
+			.cls-19, .cls-20, .cls-21, .cls-23, .cls-25, .cls-26, .cls-31, .cls-32, .cls-34, .cls-38, .cls-39, .cls-40, .cls-41, .cls-42, .cls-43 {
+				isolation: isolate;
+			}
+
+			.cls-19, .cls-40, .cls-41, .cls-42 {
+				font-size: 18px;
+			}
+
+			.cls-19, .cls-21, .cls-23, .cls-25, .cls-26, .cls-31, .cls-32, .cls-38 {
+				font-family: ArialMT, Arial;
+			}
+
+			.cls-21 {
+				font-size: 12px;
+			}
+
+			.cls-17 {
+				letter-spacing: -0.13em;
+			}
+
+			.cls-23, .cls-25, .cls-26, .cls-31, .cls-32, .cls-38, .cls-43 {
+				font-size: 10px;
+			}
+
+			.cls-24 {
+				stroke-width: 0.26px;
+			}
+
+			.cls-25 {
+				letter-spacing: -0.04em;
+			}
+
+			.cls-26 {
+				letter-spacing: -0.08em;
+			}
+
+			.cls-27 {
+				fill: #0c0;
+			}
+
+			.cls-29 {
+				stroke-width: 0.47px;
+			}
+
+			.cls-31 {
+				letter-spacing: -0.06em;
+			}
+
+			.cls-32 {
+				letter-spacing: -0.07em;
+			}
+
+			.cls-34 {
+				opacity: 0.99;
+			}
+
+			.cls-35 {
+				stroke-width: 0.57px;
+			}
+
+			.cls-36, .cls-37 {
+				fill: #063;
+			}
+
+			.cls-37 {
+				stroke-width: 0.25px;
+			}
+
+			.cls-38, .cls-39, .cls-43 {
+				fill: #1d1d1b;
+			}
+
+			.cls-39 {
+				font-size: 5px;
+			}
+
+			.cls-39, .cls-40, .cls-41, .cls-42, .cls-43 {
+				font-family: Arial-BoldMT, Arial;
+				font-weight: 700;
+			}
+
+			.cls-44 {
+				letter-spacing: -0.02em;
+			}
+		</style>
+	</defs>
+	<title>UHV SEM s tlacitky interlocks6</title>
+	<g id="graphics">
+		<rect id="rect2138-6" class="cls-1" x="268.4" y="235.4" width="29" height="11.3"/>
+		<rect id="rect2138-8" class="cls-1" x="380.9" y="289.8" width="29" height="11.3"/>
+		<rect id="rect2138" class="cls-1" x="380.4" y="237.5" width="29" height="11.3"/>
+		<rect id="rect848-8-5" class="cls-2" x="168.7" y="186.4" width="117.2" height="26" transform="translate(-74.4 219.6) rotate(-45.1)"/>
+		<polygon id="rect848-8" class="cls-3" points="64.8 177.4 143.7 251.6 127.5 266.8 48.5 192.7 64.8 177.4"/>
+		<rect id="rect848" class="cls-4" x="197.5" y="256.2" width="159.2" height="26"/>
+		<ellipse id="path837" class="cls-5" cx="155.7" cy="269.2" rx="50.7" ry="51.2"/>
+		<rect id="rect850" class="cls-6" x="258" y="247" width="48" height="44.4" rx="2.3"/>
+		<g id="g1705-8">
+			<circle id="path901-7" class="cls-7" cx="282.6" cy="219.9" r="21"/>
+			<path id="path952-3" class="cls-8" d="M281.1,240.6h-.7a20.1,20.1,0,0,1-11.6-5.1,9,9,0,0,1-1.9-2s2.8-7.7,6.1-17,6.1-16.9,6.1-17l.8-.2a29.5,29.5,0,0,1,4.2-.1l2.1.3s12.1,33.5,12.1,33.7l-.4.6a21.4,21.4,0,0,1-10.4,6.2,18.4,18.4,0,0,1-4.7.6Z"/>
+			<ellipse id="path837-6-2-3" class="cls-9" cx="282.7" cy="221.1" rx="4.1" ry="4"/>
+			<path id="path875-6" class="cls-10" d="M282.5,203.7l1.8,1.8-1.8-6.4-1.8,6.4Z"/>
+			<path id="path875-9-3-7" class="cls-10" d="M274.4,234.2l-.7-2.5-1.6,6.5,4.8-4.6Z"/>
+			<path id="path875-9-3-7-2" data-name="path875-9-3-7" class="cls-11" d="M290.2,234.2l-2.5-.7,4.8,4.7-1.5-6.5Z"/>
+		</g>
+		<g id="g1705-8-2" data-name="g1705-8">
+			<circle id="path901-7-2" data-name="path901-7" class="cls-7" cx="49.9" cy="173.4" r="21"/>
+			<path id="path952-3-2" data-name="path952-3" class="cls-8" d="M48.4,194.1h-.7A20.4,20.4,0,0,1,36.1,189a9.1,9.1,0,0,1-1.9-2s2.8-7.7,6.1-17,6.1-16.9,6.1-17l.8-.2h4.2l2.1.3s12.1,33.5,12.1,33.7l-.4.6a20.7,20.7,0,0,1-10.4,6.2,18.4,18.4,0,0,1-4.7.6Z"/>
+			<ellipse id="path837-6-2-3-2" data-name="path837-6-2-3" class="cls-9" cx="50" cy="174.6" rx="4.1" ry="4"/>
+			<path id="path875-6-2" data-name="path875-6" class="cls-10" d="M49.8,157.2l1.8,1.8-1.8-6.4L48,159Z"/>
+			<path id="path875-9-3-7-3" data-name="path875-9-3-7" class="cls-10" d="M41.7,187.8l-.7-2.5-1.6,6.5,4.8-4.6Z"/>
+			<path id="path875-9-3-7-4" data-name="path875-9-3-7" class="cls-11" d="M57.5,187.7l-2.5-.6,4.8,4.7-1.5-6.5Z"/>
+		</g>
+		<path id="rect2142" class="cls-12" d="M394.9,72h.1a2.3,2.3,0,0,1,2.3,2.3V112h-4.7V74.3A2.3,2.3,0,0,1,394.9,72Z"/>
+		<path id="rect2134-5" class="cls-3" d="M304,117.4l66.9-66.9a2.2,2.2,0,0,1,3.2,0l1.4,1.4a2.2,2.2,0,0,1,0,3.2L308.6,122Z"/>
+		<rect id="rect2138-2" class="cls-1" x="236.4" y="109" width="30.4" height="11.85" transform="translate(-7.6 211.6) rotate(-45)"/>
+		<ellipse id="path837-6" class="cls-13" cx="279.4" cy="142.7" rx="35.9" ry="37.3"/>
+		<g id="g2995">
+			<path id="path2989" class="cls-14" d="M397.3,391.4v10.2H503.6V170.8H412.9"/>
+			<path id="path2991" class="cls-14" d="M397.3,391.4V390"/>
+		</g>
+		<path id="path2997" class="cls-14" d="M392.7,391v14.8H508.4v-235h17.1"/>
+		<path id="path3009" class="cls-14" d="M186.6,47.7,170.1,31.2V12.7"/>
+		<path id="path3011" class="cls-14" d="M183.4,51.1,165.2,32.9V7.5"/>
+		<path id="path3013" class="cls-14" d="M170.1,12.7H503.6V166H412.8"/>
+		<path id="path3015" class="cls-14" d="M165.2,7.5H508.4V166H525"/>
+		<path id="rect2134" class="cls-12" d="M393,265.5H564a2.3,2.3,0,0,1,2.3,2.3v1.9A2.3,2.3,0,0,1,564,272H393Z"/>
+		<rect id="rect852" class="cls-12" x="356.6" y="248.8" width="78.1" height="40.9" rx="2.3"/>
+		<g id="g3044">
+			<circle id="path3017" class="cls-15" cx="154.4" cy="307.4" r="7.7"/>
+			<path id="path3021" class="cls-14" d="M154.3,311.7l3.7-8"/>
+			<path id="path3021-7" class="cls-14" d="M154.3,311.7l-3.7-8"/>
+			<path id="path3038" class="cls-14" d="M150.2,306.4h8.2"/>
+		</g>
+		<g id="g3044-2">
+			<circle id="path3017-2" class="cls-16" cx="105.6" cy="233.4" r="7.7"/>
+			<path id="path3021-2" class="cls-14" d="M105.6,237.7l3.7-8"/>
+			<path id="path3021-7-2" class="cls-14" d="M105.6,237.7l-3.8-8"/>
+			<path id="path3038-2" class="cls-14" d="M101.4,232.4h8.2"/>
+		</g>
+		<g id="g3044-8">
+			<circle id="path3017-3" class="cls-17" cx="422.3" cy="278.1" r="7.7"/>
+			<path id="path3021-6" class="cls-14" d="M422.2,282.4l3.7-8"/>
+			<path id="path3021-7-8" class="cls-14" d="M422.2,282.4l-3.7-8"/>
+			<path id="path3038-4" class="cls-14" d="M418,277h8.3"/>
+		</g>
+		<path id="rect2140" class="cls-18" d="M389.3,110.2h11.1a1.5,1.5,0,0,1,1.5,1.5V215.3h-14V111.6A1.4,1.4,0,0,1,389.3,110.2Z"/>
+		<text class="cls-19" transform="translate(132 261.5)">MAIN</text>
+		<text class="cls-19" transform="translate(120 284)">Chamber</text>
+		<g class="cls-20">
+			<text class="cls-21" transform="translate(262.4 139.6)">PREP.</text>
+		</g>
+		<text class="cls-21" transform="translate(254.9 154.1)">Chamber</text>
+		<text class="cls-21" transform="translate(263.7 256.3) rotate(45)">Carusel</text>
+		<text class="cls-21" transform="translate(362.6 267.8)">LOAD Lock</text>
+		<text class="cls-21" transform="translate(398.5 193.1) rotate(-90)">AIR Lock</text>
+		<text class="cls-23" transform="translate(173.2 100.7)">TMP1</text>
+		<text class="cls-23" transform="translate(176.3 110.6)">(Big)</text>
+		<text class="cls-23" transform="translate(337.4 342)">TMP2</text>
+		<text class="cls-23" transform="translate(336.3 352.8)">(Small)</text>
+		<text class="cls-23" transform="translate(29.5 247.5)">Ch. IMG 300</text>
+		<text class="cls-23" transform="translate(67.7 330.4)">Chamber FRG</text>
+		<path id="path1344" class="cls-24" d="M428.8,282.1l11.3,8.7h15.6"/>
+		<g class="cls-20">
+			<text class="cls-25" transform="translate(444.8 287.9)">L</text>
+			<text class="cls-26" transform="translate(450.4 287.9)">L</text>
+		</g>
+		<path id="path1366" class="cls-24" d="M149.5,312.8l-11.8,20.4H67"/>
+		<path id="path1370" class="cls-24" d="M104.4,238.8l-6.6,11.5H30.2"/>
+		<g id="g1714">
+			<g id="g2237">
+				<rect id="rect2231" class="cls-27" x="28.6" y="69.3" width="26.9" height="13.17" rx="2.3"/>
+				<path id="rect2231-2" class="cls-28" d="M54.6,69.7l.9,1.1v9.3a2.3,2.3,0,0,1-2.3,2.3H30.3l-.9-.4"/>
+				<path id="path2233" class="cls-29" d="M29.4,82,54.6,69.7"/>
+			</g>
+			<rect id="rect2231-2-2" data-name="rect2231" class="cls-30" x="28.6" y="69.3" width="26.9" height="13.17" rx="2.3"/>
+			<g class="cls-20">
+				<text class="cls-31" transform="translate(61.8 23)">T</text>
+				<text class="cls-23" transform="translate(67.5 23)">urbo Pump</text>
+			</g>
+			<text class="cls-23" transform="translate(61.8 51.9)">Ion Pump</text>
+			<g class="cls-20">
+				<text class="cls-32" transform="translate(61.8 79.5)">V</text>
+				<text class="cls-23" transform="translate(67.7 79.5)">alve</text>
+			</g>
+			<text class="cls-23" transform="translate(61.8 105.8)">Gauge</text>
+			<g>
+				<path id="path3021-0" class="cls-33" d="M42,105.9l4.4-9.5"/>
+				<path id="path3021-7-6" class="cls-33" d="M42,105.9l-4.4-9.5"/>
+				<path id="path3038-2-2" class="cls-33" d="M37,99.5h9.9"/>
+				<g id="g3044-1">
+					<g id="path3017-32">
+						<circle class="cls-34" cx="42" cy="100.3" r="7.1"/>
+					</g>
+				</g>
+			</g>
+			<g id="g2792-5-4">
+				<circle id="path901-8-7-5-3" class="cls-35" cx="42" cy="17.7" r="11.7"/>
+				<g id="g2763-5-7">
+					<path id="path952-1-8-6-5" class="cls-36" d="M41.3,6.2h-.4A11.2,11.2,0,0,0,34.4,9a5.8,5.8,0,0,0-1,1.2s1.5,4.3,3.4,9.5,3.4,9.4,3.4,9.5H43l1.2-.2,6.7-18.9c0-.1,0-.1-.2-.3a12,12,0,0,0-5.8-3.5l-2.6-.3Z"/>
+				</g>
+				<circle id="path2765-1-2" class="cls-36" cx="42" cy="17.7" r="4.3"/>
+				<circle id="path2765-4-8-4" class="cls-37" cx="42" cy="17.7" r="2.9"/>
+			</g>
+			<g id="g1705-8-3" data-name="g1705-8">
+				<circle id="path901-7-3" data-name="path901-7" class="cls-7" cx="42.1" cy="48.4" r="12.8"/>
+				<path id="path952-3-3" data-name="path952-3" class="cls-18" d="M41.2,61.1h-.4A13.4,13.4,0,0,1,33.7,58l-1.2-1.3s1.8-4.7,3.8-10.3L40,36l.5-.2h2.6l1.2.2s7.4,20.4,7.4,20.6l-.2.3a12.4,12.4,0,0,1-6.4,3.8,13.5,13.5,0,0,1-2.8.4Z"/>
+				<ellipse id="path837-6-2-3-3" data-name="path837-6-2-3" class="cls-9" cx="42.2" cy="49.2" rx="2.5" ry="2.4"/>
+				<path id="path875-6-3" data-name="path875-6" class="cls-10" d="M42.1,38.5l1.1,1.1-1.1-3.9L41,39.6Z"/>
+				<path id="path875-9-3-7-5" data-name="path875-9-3-7" class="cls-10" d="M37.1,57.2l-.4-1.5-1,3.9,2.9-2.8Z"/>
+				<path id="path875-9-3-7-6" data-name="path875-9-3-7" class="cls-11" d="M46.8,57.2l-1.5-.4,2.9,2.8-.9-3.9Z"/>
+			</g>
+		</g>
+		<g class="cls-20">
+			<text class="cls-23" transform="translate(514.8 130.9)">Fore </text>
+			<text class="cls-32" transform="translate(538.1 130.9)">V</text>
+			<text class="cls-23" transform="translate(544.1 130.9)">acuum</text>
+		</g>
+		<text class="cls-23" transform="translate(532.6 142.4)">Pump</text>
+		<g id="g2792-5-4-2" data-name="g2792-5-4">
+			<circle id="path901-8-7-5-3-2" data-name="path901-8-7-5-3" class="cls-35" cx="393.6" cy="345.5" r="21"/>
+			<g id="g2763-5-7-2" data-name="g2763-5-7">
+				<path id="path952-1-8-6-5-2" data-name="path952-1-8-6-5" class="cls-36" d="M392.3,324.8h-.7a21.5,21.5,0,0,0-11.7,5.1A9.5,9.5,0,0,0,378,332s2.8,7.7,6.1,17.1,6.2,17,6.2,17.1l.8.2a29.5,29.5,0,0,0,4.2.1l2.1-.3s12.2-33.7,12.2-33.9-.1-.2-.4-.6a21.1,21.1,0,0,0-10.5-6.3,24.2,24.2,0,0,0-4.7-.6Z"/>
+			</g>
+			<circle id="path2765-1-2-2" data-name="path2765-1-2" class="cls-36" cx="393.6" cy="345.5" r="7.7"/>
+			<circle id="path2765-4-8-4-2" data-name="path2765-4-8-4" class="cls-37" cx="393.6" cy="345.5" r="5.3"/>
+		</g>
+		<g id="g2792-5-4-3" data-name="g2792-5-4">
+			<circle id="path901-8-7-5-3-3" data-name="path901-8-7-5-3" class="cls-35" cx="544.1" cy="168.4" r="21"/>
+			<g id="g2763-5-7-3" data-name="g2763-5-7">
+				<path id="path952-1-8-6-5-3" data-name="path952-1-8-6-5" class="cls-36" d="M542.8,147.7h-.7a20.1,20.1,0,0,0-11.7,5.1,7.2,7.2,0,0,0-1.9,2l6.1,17.1c3.3,9.4,6.1,17,6.1,17.1l.8.2a20.8,20.8,0,0,0,4.3.1l2.1-.3s12.2-33.7,12.2-33.9-.1-.2-.4-.6a20.9,20.9,0,0,0-10.5-6.2,18.9,18.9,0,0,0-4.7-.6Z"/>
+			</g>
+			<circle id="path2765-1-2-3" data-name="path2765-1-2" class="cls-36" cx="544.1" cy="168.4" r="7.7"/>
+			<circle id="path2765-4-8-4-3" data-name="path2765-4-8-4" class="cls-37" cx="544.1" cy="168.4" r="5.3"/>
+		</g>
+		<g id="g2792-5-4-4" data-name="g2792-5-4">
+			<circle id="path901-8-7-5-3-4" data-name="path901-8-7-5-3" class="cls-35" cx="216.3" cy="79.7" r="21"/>
+			<g id="g2763-5-7-4" data-name="g2763-5-7">
+				<path id="path952-1-8-6-5-4" data-name="path952-1-8-6-5" class="cls-36" d="M215,59h-.7a20.1,20.1,0,0,0-11.7,5.1,11.9,11.9,0,0,0-1.9,2l6.1,17.2c3.3,9.3,6.2,17,6.2,17.1l.8.2H218l2.1-.3s12.2-33.8,12.2-34-.1-.2-.4-.6a21.7,21.7,0,0,0-10.5-6.2,18.4,18.4,0,0,0-4.7-.6Z"/>
+			</g>
+			<circle id="path2765-1-2-4" data-name="path2765-1-2" class="cls-36" cx="216.3" cy="79.7" r="7.7"/>
+			<circle id="path2765-4-8-4-4" data-name="path2765-4-8-4" class="cls-37" cx="216.3" cy="79.7" r="5.3"/>
+		</g>
+		<text class="cls-23" transform="translate(155.7 80.7)">FV1</text>
+		<text class="cls-23" transform="translate(202 129.1)">V04</text>
+		<text class="cls-23" transform="translate(190.5 182.2)">V17</text>
+		<text class="cls-23" transform="translate(221.8 243.1)">V16</text>
+		<text class="cls-23" transform="translate(324.1 243.1)">V15</text>
+		<text class="cls-23" transform="translate(415.8 143.3)">V05</text>
+		<text class="cls-23" transform="translate(415.8 180.9)">V06</text>
+		<text class="cls-23" transform="translate(422.3 229.7)">V14</text>
+		<text class="cls-23" transform="translate(422.3 317.1)">V13</text>
+		<text class="cls-23" transform="translate(428.8 348.7)">V09</text>
+		<text class="cls-23" transform="translate(422.2 382.7)">V10</text>
+		<text class="cls-23" transform="translate(101.8 191)">V19</text>
+		<text class="cls-23" transform="translate(247.4 60)">VV1</text>
+		<g id="g4282-8">
+			<g id="g4205-3">
+				<text class="cls-38" transform="translate(452 348.3)">N</text>
+				<text class="cls-39" transform="translate(459.5 350.8)">2</text>
+			</g>
+			<text class="cls-38" transform="translate(448.7 347.9)">(</text>
+			<text class="cls-38" transform="matrix(-1, 0, 0, 1, 465.52, 347.89)">(</text>
+		</g>
+		<g id="g4282-8-2">
+			<g id="g4205-3-2">
+				<text class="cls-38" transform="translate(439.9 142.9)">N</text>
+				<text class="cls-39" transform="translate(447.4 145.4)">2</text>
+			</g>
+			<text class="cls-38" transform="translate(436.6 142.5)">(</text>
+			<text class="cls-38" transform="matrix(-1, 0, 0, 1, 453.45, 142.49)">(</text>
+		</g>
+		<g id="g4282-8-3">
+			<g id="g4205-3-3">
+				<text class="cls-38" transform="translate(272.8 59.9)">N</text>
+				<text class="cls-39" transform="translate(280.3 62.4)">2</text>
+			</g>
+			<text class="cls-38" transform="translate(269.5 59.5)">(</text>
+			<text class="cls-38" transform="matrix(-1, 0, 0, 1, 286.33, 59.51)">(</text>
+		</g>
+	</g>
+	<g id="values">
+		<text id="p_LL" data-name="p LL" class="cls-40" transform="translate(444.8 307.4)">-- Pa</text>
+		<text id="p_FRG" data-name="p FRG" class="cls-41" transform="translate(58.8 348.9)">-- Pa</text>
+		<text id="p_IMG" data-name="p IMG" class="cls-42" transform="translate(14.3 267.8)">-- Pa</text>
+		<text id="valve_name" data-name="valve name" class="cls-43" transform="translate(29.4 394.6)"></text>
+		<text id="_24V" data-name="24V" class="cls-38" transform="translate(29.4 408.1)">24 V off</text>
+	</g>
+	<g id="buttons">
+		<g id="interlocksbtn" onclick="interlockbtnAction(this)">
+			<rect class="cls-27" x="28.6" y="368.3" width="55" height="14.8" rx="2.3"/>
+			<text id="interlocksbtntext" class="cls-38" transform="translate(34.6 379.5)">Interlocks</text>
+		</g>
+		<g id="V19">
+			<rect id="rect2231-6" class="cls-27" x="58.4" y="197.6" width="45.6" height="22.3" rx="2.3" transform="translate(-123.8 118.6) rotate(-45)"/>
+			<path id="path2233-7" class="cls-29" d="M89.6,185.8,73,231.9"/>
+		</g>
+		<g id="V17">
+			<rect id="rect2231-6-2" data-name="rect2231-6" class="cls-27" x="215" y="177.1" width="22.3" height="45.6" rx="2.3" transform="translate(-74.8 223.5) rotate(-46)"/>
+			<path id="path2233-7-2" data-name="path2233-7" class="cls-29" d="M249.3,207.9l-46.4-15.8"/>
+		</g>
+		<g id="V16">
+			<rect id="rect2231-65-2-2" class="cls-27" x="220" y="246.4" width="22.3" height="45.6" rx="2.3"/>
+			<path id="path2233-2-3" class="cls-29" d="M220.8,246.9l20.4,44.7"/>
+		</g>
+		<g id="V15">
+			<rect id="rect2231-65-2-2-2" data-name="rect2231-65-2-2" class="cls-27" x="321.7" y="246.4" width="22.3" height="45.6" rx="2.3"/>
+			<path id="path2233-2-3-2" data-name="path2233-2-3" class="cls-29" d="M322.5,246.9,343,291.6"/>
+		</g>
+		<g id="V14">
+			<rect id="rect2231-65-2-2-3" data-name="rect2231-65-2-2" class="cls-27" x="372.1" y="214.9" width="45.6" height="22.3" rx="2.3"/>
+			<path id="path2233-2-3-3" data-name="path2233-2-3" class="cls-29" d="M372.6,236.4l44.7-20.5"/>
+		</g>
+		<g id="V13">
+			<rect id="rect2231-65-2-2-4" data-name="rect2231-65-2-2" class="cls-27" x="372.1" y="301.3" width="45.6" height="22.3" rx="2.3"/>
+			<path id="path2233-2-3-4" data-name="path2233-2-3" class="cls-29" d="M372.6,322.8l44.7-20.5"/>
+		</g>
+		<g id="V10">
+			<rect id="rect2231-65-2-2-5" data-name="rect2231-65-2-2" class="cls-27" x="372.1" y="367.9" width="45.6" height="22.3" rx="2.3"/>
+			<path id="path2233-2-3-5" data-name="path2233-2-3" class="cls-29" d="M372.6,389.4l44.7-20.5"/>
+		</g>
+		<g id="V09">
+			<rect id="rect2231-65-2-2-6" data-name="rect2231-65-2-2" class="cls-27" x="415.9" y="334.9" width="10.3" height="21.13" rx="1.1"/>
+			<path id="path2233-2-3-6" data-name="path2233-2-3" class="cls-29" d="M416.3,335.2l9.5,20.7"/>
+		</g>
+		<g id="V06">
+			<rect id="rect2231-65-2-2-7" data-name="rect2231-65-2-2" class="cls-27" x="402.2" y="157.8" width="10.3" height="21.13" rx="1.1"/>
+			<path id="path2233-2-3-7" data-name="path2233-2-3" class="cls-29" d="M402.6,158l9.4,20.8"/>
+		</g>
+		<g id="V05">
+			<rect id="rect2231-65-2-2-8" data-name="rect2231-65-2-2" class="cls-27" x="402.2" y="129.2" width="10.3" height="21.13" rx="1.1"/>
+			<path id="path2233-2-3-8" data-name="path2233-2-3" class="cls-29" d="M402.6,129.4l9.4,20.7"/>
+		</g>
+		<g id="V04">
+			<rect id="rect2231-6-3" data-name="rect2231-6" class="cls-27" x="216.6" y="91.6" width="45.6" height="22.3" rx="2.3" transform="translate(-2.6 199.3) rotate(-45)"/>
+			<path id="path2233-7-3" data-name="path2233-7" class="cls-29" d="M247.7,79.8l-16.6,46"/>
+		</g>
+		<g id="VV1">
+			<rect id="rect2231-6-4" data-name="rect2231-6" class="cls-27" x="230.4" y="50.4" width="10.9" height="22.35" rx="1.1" transform="translate(18.6 172.1) rotate(-41.6)"/>
+			<path id="path2233-7-4" data-name="path2233-7" class="cls-29" d="M246.9,66.3l-22.1-9.5"/>
+		</g>
+		<g id="FV1">
+			<rect id="rect2231-6-5" data-name="rect2231-6" class="cls-27" x="170.4" y="45.5" width="45.6" height="22.3" rx="2.3" transform="translate(16.5 153.2) rotate(-45)"/>
+			<path id="path2233-7-5" data-name="path2233-7" class="cls-29" d="M201.6,33.7,185,79.7"/>
+		</g>
+	</g>
+</svg>
+
+<hr>
+
+P plot:<input type="checkbox" id="chbp" onchange="plotp(this.checked)">log pressure,
+history [samples]: <input type="number" id="phisti" min="10" max="10000" value="60" step="1" onchange="document.getElementById('phistr').value = this.value">
+0 <input type="range" id="phistr" min="10" max="10000" value = "60" step = "1" onchange="document.getElementById('phisti').value = this.value"> 10000<br>
+<div id="pplot" style="width:90%;height:400px;"></div>
+
+<hr>
+
+Power-save enable:
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80000000', '4')" id="pwrsavebtn">POWERSAVE</button>
+
+<hr>
+
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80000001', '4')" id="vlvbtno0">FV1 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80000001', '4')">FV1 CLOSE</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnres, '128', '00ffffff', '4')">FV1 UNLOCK</button>
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80000002', '4')"id="vlvbtno1">VV1 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80000002', '4')">VV1 CLOSE</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnres, '132', '00ffffff', '4')">VV1 UNLOCK</button>
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80000010', '4')"id="vlvbtno4">V04 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80000010', '4')">V04 CLOSE</button>
+SVL
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80000020', '4')"id="vlvbtno5">V05 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80000020', '4')">V05 CLOSE</button>
+airlock vent
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80000040', '4')"id="vlvbtno6">V06 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80000040', '4')">V06 CLOSE</button>
+airlock pump
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80000080', '4')"id="vlvbtno7">V07 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80000080', '4')">V07 CLOSE</button>
+predcerpanie bypasu
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80000100', '4')"id="vlvbtno8">V08 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80000100', '4')">V08 CLOSE</button>
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80000200', '4')"id="vlvbtno9">V09 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80000200', '4')">V09 CLOSE</button>
+vvl tmp2
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80000400', '4')"id="vlvbtno10">V10 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80000400', '4')">V10 CLOSE</button>
+fvl tmp2
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80000800', '4')"id="vlvbtno11">V11 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80000800', '4')">V11 CLOSE</button>
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80001000', '4')"id="vlvbtno12">V12 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80001000', '4')">V12 CLOSE</button>
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80002000', '4')"id="vlvbtno13">V13 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80002000', '4')">V13 CLOSE</button>
+svl tmp2
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80004000', '4')"id="vlvbtno14">V14 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80004000', '4')">V14 CLOSE</button>
+asv
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80008000', '4')"id="vlvbtno15">V15 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80008000', '4')">V15 CLOSE</button>
+lsv
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80010000', '4')"id="vlvbtno16">V16 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80010000', '4')">V16 CLOSE</button>
+ssv
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80020000', '4')"id="vlvbtno17">V17 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80020000', '4')">V17 CLOSE</button>
+psv
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80040000', '4')"id="vlvbtno18">V18 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80040000', '4')">V18 CLOSE</button>
+bb
+<br>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '32', '80080000', '4')"id="vlvbtno19">V19 OPEN</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '36', '80080000', '4')">V19 CLOSE</button>
+isv
+
+<p id="result"></p>
+
+<hr>
+
+TSC addr: <input type="number" id="tscaddr" value="2"><br>
+TSC data: <input type="text" id="tscwdata" value=""><br>
+TSC rlen: <input type="number" id="tscrdatalen" value="2"><br>
+<button type="button" onclick="tscrpc('jsonrpc', fcntsc)">TSC</button>
+<hr>
+UPS check:
+<button type="button" onclick="tscrpcc('jsonrpc', fcntscups, '64', '', '2')">UPS</button>
+<hr>
+Decontaminator PWR:
+<button type="button" onclick="tscrpcc('jsonrpc', fcntscdec, '48', '0200', '2')">DEC ON</button>
+<button type="button" onclick="tscrpcc('jsonrpc', fcntscdec, '50', '0200', '2')">DEC OFF</button>
+<hr>
+Valve register check:
+<button type="button" onclick="tscrpcc('jsonrpc', fcnvlv, '40', '', '4')" id="vlvcheck">READ</button>
+<hr>
+
+
+<hr>
+chamber cmds: <br>
+<button type="button" onclick="genericrpc('jsonrpc', 'chbr.vent', fcnres)">vent</button>
+<button type="button" onclick="genericrpc('jsonrpc', 'chbr.pump', fcnres)">pump</button>
+<button type="button" onclick="genericrpc('jsonrpc', 'chbr.off', fcnres)">off</button>
+<button type="button" onclick="genericrpc('jsonrpc', 'chbr.stat?', fcnres)">status</button>
+<button type="button" onclick="genericrpc('jsonrpc', 'chbr.clear', fcnres)">clearerror</button>
+<hr>
+SEM gun cmds: <br>
+<button type="button" onclick="genericrpc('jsonrpc', 'sem.vent', fcnres)">vent</button>
+<button type="button" onclick="genericrpc('jsonrpc', 'sem.pump', fcnres, { value : 3600.0*parseFloat(document.getElementById('baketimei').value) })">bake-out/pump</button>
+<button type="button" onclick="genericrpc('jsonrpc', 'sem.off', fcnres)">off</button>
+<button type="button" id="bgunstatus" onclick="genericrpc('jsonrpc', 'sem.stat?', fcnres)">status</button>
+<button type="button" onclick="genericrpc('jsonrpc', 'sem.clear', fcnres)">clearerror</button>
+<button type="button" onclick="genericrpc('jsonrpc', 'sem.ions', fcnres)">IONPs cold start</button>
+<br>
+Bake-out: time [hours]:
+<input type="number" id="baketimei" min="0.0" max="24.0" value="0.0" step="0.25" onchange="document.getElementById('baketimer').value = this.value">
+0.0 <input type="range" id="baketimer" min="0.0" max="24.0" value = "0.0" step = "0.25" onchange="document.getElementById('baketimei').value = this.value"> 24.0<br>
+for getter activation only, use time of 0.0: complete cycle takes ~ 10 hours : 2(ramp-up) + 1(act.) + 4(cond.) + 2(ramp-down) + 1(rdy wait)<br>
+for proper bakeout cycle, use nonzero value: complete cycle takes ~ time + 12hours: (time + getter activation + 2)
+<br>
+<button type="button" onclick="genericrpc('jsonrpc', 'sem.beam', fcnres, { value : true } )">beam on</button>
+<button type="button" onclick="genericrpc('jsonrpc', 'sem.beam', fcnres, { value : false } )">beam off</button>
+<br>
+poll status:<input type="checkbox" id="chbpollgstat" onchange="pollgstat(this.checked)">
+<hr>
+
+<script>
+	// ------------------ svg funkce a promenne ------------------------
+	var valves = {
+		FV1: {name: "vlvbtno0", wdata: "80000001"},
+		VV1: {name: "vlvbtno1", wdata: "80000002"},
+		V04: {name: "vlvbtno4", wdata: "80000010"},
+		V05: {name: "vlvbtno5", wdata: "80000020"},
+		V06: {name: "vlvbtno6", wdata: "80000040"},
+		//V07: {name: "vlvbtno7", wdata: "80000080"},
+		//V08: {name: "vlvbtno8", wdata: "80000100"},
+		V09: {name: "vlvbtno9", wdata: "80000200"},
+		V10: {name: "vlvbtno10", wdata: "80000400"},
+		//V11: {name: "vlvbtno11", wdata: "80000800"},
+		//V12: {name: "vlvbtno12", wdata: "80001000"},
+		V13: {name: "vlvbtno13", wdata: "80002000"},
+		V14: {name: "vlvbtno14", wdata: "80004000"},
+		V15: {name: "vlvbtno15", wdata: "80008000"},
+		V16: {name: "vlvbtno16", wdata: "80010000"},
+		V17: {name: "vlvbtno17", wdata: "80020000"},
+		//V18: {name: "vlvbtno18", wdata: "80040000"},
+		V19: {name: "vlvbtno19", wdata: "80080000"}
+	};
+
+	for (var valve in valves) {
+		valves[valve].addr = "32";
+		valves[valve].rlen = "4";
+		valves[valve].open_state = true;
+
+		valves[valve].button = document.getElementById(valve);
+		valves[valve].button.onclick = function() {vlvbtnAction(this.id);};
+	}
+
+	var lastBtnPress = 0.;
+
+	function vlvbtnAction(name) {
+		valve = valves[name]
+		tscrpcc("jsonrpc", fcnvlv, valve.addr, valve.wdata, "4");
+        if (valve.open_state === false){
+            if (typeof timeoutPowerSave != "undefined"){
+		      clearTimeout(timeoutPowerSave);
+            }
+        timeoutPowerSave=setTimeout(function(){tscrpcc('jsonrpc', fcnvlv, '36', '80000000', '4');}, 1000); //set voltage from 24v back to 12V
+        }
+		document.getElementById('valve_name').innerHTML = name + " clicked";
+	}
+	function interlockbtnAction(btn) {
+		var rectangle = btn.children[0];
+		if (rectangle.classList.contains("cls-27")){//green
+			rectangle.classList.remove("cls-27"); //green
+			rectangle.classList.add("cls-17"); //red
+
+			for (var valve in valves) { //if interlocks btn is deactivated (red), activate all valve buttons
+				setActive(valves[valve]);
+			}
+			document.getElementById('valve_name').innerHTML = "Interlocks off";
+		} else {
+			rectangle.classList.remove("cls-17"); //red
+			rectangle.classList.add("cls-27"); //green
+
+			interlocks();
+			document.getElementById('valve_name').innerHTML = "Interlocks on";
+		}
+	}
+
+	function interlocks() {
+		if ((valves.FV1.open_state === true || valves.V05.open_state === true || valves.V10.open_state === true) || valves.V14.open_state === true){
+			setInactive(valves.V06, "to open V06, all of valves FV1, V05, V10 and V14 has to be closed");
+		} else {
+			setActive(valves.V06);
+		}
+
+		if (valves.V06.open_state === true){
+			setInactive(valves.FV1, "to open valve FV1, valve V06 has to be closed ");
+			setInactive(valves.V10, "to open valve V10, valve V06 has to be closed ");
+		} else {
+			setActive(valves.FV1);
+			setActive(valves.V10);
+		}
+
+		if (valves.V14.open_state === true || valves.V06.open_state === true){
+			setInactive(valves.V05, "to open valve V05, valves V06 and V14 has to be closed");
+		} else {
+			setActive(valves.V05);
+		}
+
+		if ((valves.V05.open_state === true || valves.V06.open_state) === true || (valves.V15.open_state === true && valves.V16.open_state === true)){
+			setInactive(valves.V14, "to open valve V14, all of valves V05, V06 and V15/V16 has to be closed");
+		} else {
+			setActive(valves.V14);
+		}
+
+		if (valves.V14.open_state === true){
+			if (valves.V15.open_state === true && valves.V16.open_state !== true){
+				setInactive(valves.V16, "to open valve V16, valve V14 has to be closed ");
+			} else if (valves.V15.open_state !== true && valves.V16.open_state === true){
+				setInactive(valves.V15, "to open valve V15, valve V14 has to be closed ");
+			} else {
+				setActive(valves.V16);
+			}
+		} else {
+			setActive(valves.V15);
+			setActive(valves.V16);
+		}
+	}
+
+	function setActive(valve) {
+		valve.button.classList.remove("inactive");
+		valve.button.onclick = function() {vlvbtnAction(this.id);};
+	}
+
+	function setInactive(valve, message){
+		if (valve.open_state === false){
+			valve.button.classList.add("inactive");
+			valve.button.onclick = function() {document.getElementById('valve_name').innerHTML = message};
+		}
+	}
+	function updatePressureValues(){     
+        document.getElementById("p_FRG").innerHTML = pdata[0].y[pdata[0].y.length-1].toExponential(2)+" Pa"; //FRG/AIB
+		document.getElementById("p_IMG").innerHTML = pdata[1].y[pdata[1].y.length-1].toExponential(2)+" Pa"; //IMG
+		document.getElementById("p_LL").innerHTML = pdata[3].y[pdata[3].y.length-1].toExponential(2)+" Pa"; //loadlock
+    }
+	
+	//konec nových funkcí a promennych pro potreby svg
+
+var resulttmr, p0tmr, p1tmr;
+
+// ------------------ TSC ------------------------
+function tscrpc(url, cfunc) {
+  var xhttp;
+  var rpcobj = {jsonrpc:"2.0", method:"tsc.wrd", params: [], id : Math.random().toString(16).substr(2, 5)};
+  rpcobj.params[0] = document.getElementById("tscaddr").value;
+  rpcobj.params[1] = document.getElementById("tscwdata").value;
+  rpcobj.params[2] = document.getElementById("tscrdatalen").value;
+  var jsontext = JSON.stringify(rpcobj);
+  xhttp=new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (xhttp.readyState == 4 && xhttp.status == 200) {
+      cfunc(xhttp);
+    } else if (xhttp.readyState == 4) {
+      document.getElementById("result").innerHTML = "Server reply: " + xhttp.status;
+    }
+  };
+  xhttp.open("POST", url, true);
+  //Send the proper header information along with the request
+  xhttp.setRequestHeader("Content-type", "application/json-rpc");
+  xhttp.send(jsontext);
+}
+
+
+function fcntsc(xhttp) {
+	obj = JSON.parse(xhttp.responseText);
+	if ( 'result' in obj) {
+		if( 'rdata' in obj.result ) {
+			document.getElementById("result").innerHTML = obj.result.rdata;
+		} else {
+			document.getElementById("result").innerHTML = obj.result.status;
+			if ( 'sd' in obj.result ) {
+				document.getElementById("result").innerHTML += (' SD:' + obj.result.sd);
+			}
+		}
+	} else if ( 'error' in obj) {
+		document.getElementById("result").innerHTML = obj.error.message;
+	} else {
+		document.getElementById("result").innerHTML = "no properly formatted response!!!"
+	}
+}
+// ------------------ TSC & UPS ------------------------
+function tscrpcc(url, cfunc, addr, wdata, rlen) {
+  var xhttp;
+  var rpcobj = {jsonrpc:"2.0", method:"tsc.wrd", params: [], id : Math.random().toString(16).substr(2, 5)};
+  rpcobj.params[0] = addr;
+  rpcobj.params[1] = wdata;
+  rpcobj.params[2] = rlen;
+  var jsontext = JSON.stringify(rpcobj);
+  xhttp=new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (xhttp.readyState == 4 && xhttp.status == 200) {
+      cfunc(xhttp);
+    } else if (xhttp.readyState == 4) {
+      document.getElementById("result").innerHTML = "Server reply: " + xhttp.status;
+    }
+  };
+  xhttp.open("POST", url, true);
+  //Send the proper header information along with the request
+  xhttp.setRequestHeader("Content-type", "application/json-rpc");
+  xhttp.send(jsontext);
+}
+
+function fcntscups(xhttp) {
+	obj = JSON.parse(xhttp.responseText);
+	if ( 'result' in obj) {
+		if( 'rdata' in obj.result ) {
+			inputs = parseInt(obj.result.rdata, 16) & 0xc000;
+			if ( 0xc000 === inputs ) {
+				document.getElementById("result").innerHTML = "UPS: AC - OK, Batt - OK \n";
+			} else if ( 0x8000 === inputs ) {
+				document.getElementById("result").innerHTML = "UPS: AC - OFF, Batt - OK \n";
+			} else if ( 0x4000 === inputs ) {
+				document.getElementById("result").innerHTML = "UPS: AC - OK, Batt - LOW \n";
+			} else {
+				document.getElementById("result").innerHTML = "UPS: AC - OFF, Batt - LOW \n";
+			}
+		} else {
+			document.getElementById("result").innerHTML = obj.result.status;
+			if ( 'sd' in obj.result ) {
+				document.getElementById("result").innerHTML += (' SD:' + obj.result.sd);
+			}
+		}
+	} else if ( 'error' in obj) {
+		document.getElementById("result").innerHTML = obj.error.message;
+	} else {
+		document.getElementById("result").innerHTML = "no properly formatted response!!!"
+	}
+}
+
+function fcntscdec(xhttp) {
+	obj = JSON.parse(xhttp.responseText);
+	if ( 'result' in obj) {
+		if( 'rdata' in obj.result ) {
+			dec = parseInt(obj.result.rdata, 16) & 0x0200;
+			if ( 0 === dec ) {
+				document.getElementById("result").innerHTML = "DEC OFF \n";
+			} else  {
+				document.getElementById("result").innerHTML = "DEC ON \n";
+			}
+		} else {
+			document.getElementById("result").innerHTML = obj.result.status;
+			if ( 'sd' in obj.result ) {
+				document.getElementById("result").innerHTML += (' SD:' + obj.result.sd);
+			}
+		}
+	} else if ( 'error' in obj) {
+		document.getElementById("result").innerHTML = obj.error.message;
+	} else {
+		document.getElementById("result").innerHTML = "no properly formatted response!!!"
+	}
+}
+// ---------------------- generic rpc -----------------------------
+function genericrpc(url, cmd, cfunc, params) {
+	var xhttp;
+	var rpcobj = {jsonrpc : "2.0", method : cmd, id : Math.random().toString(16).substr(2, 5)};;
+	if (typeof params !== 'undefined') {
+		rpcobj.params = params;
+	}
+	var jsontext = JSON.stringify(rpcobj);
+	xhttp=new XMLHttpRequest();
+	xhttp.onreadystatechange = function() {
+		if (xhttp.readyState == 4 && xhttp.status == 200) {
+			cfunc(xhttp);
+		} else if (xhttp.readyState == 4) {
+			document.getElementById("result").innerHTML = "Server reply: " + xhttp.status;
+			document.getElementById("chbpollgstat").checked = false; // turn off the timer
+			document.getElementById("chbpollgstat").onchange(false);
+		}
+	};
+	xhttp.open("POST", url, true);
+	//Send the proper header information along with the request
+	xhttp.setRequestHeader("Content-type", "application/json-rpc");
+	xhttp.send(jsontext);
+}
+// ---------------------- pressure rpc -----------------------------
+function prsrrpc(url, cmd, idx, cfunc) {
+  var xhttp;
+  var rpcobj = {jsonrpc:"2.0", method:"chbr.cmd", params: [cmd, idx], id : Math.random().toString(16).substr(2, 5)};
+  var jsontext = JSON.stringify(rpcobj);
+  xhttp=new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (xhttp.readyState == 4 && xhttp.status == 200) {
+      cfunc(xhttp, idx);
+    } else if (xhttp.readyState == 4) {
+      document.getElementById("result").innerHTML = "Server reply: " + xhttp.status;
+    }
+  };
+  xhttp.open("POST", url, true);
+  //Send the proper header information along with the request
+  xhttp.setRequestHeader("Content-type", "application/json-rpc");
+  xhttp.send(jsontext);
+}
+// ---------------------- adc rpc -----------------------------
+function adcrpc(url, cfunc) {
+  var xhttp;
+  var rpcobj = {jsonrpc:"2.0", method:"adc.get", params: [], id : Math.random().toString(16).substr(2, 5)};
+  rpcobj.params[0] = parseInt(document.getElementById("adcch").value);
+  var jsontext = JSON.stringify(rpcobj);
+  xhttp=new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (xhttp.readyState == 4 && xhttp.status == 200) {
+      cfunc(xhttp);
+    } else if (xhttp.readyState == 4) {
+      document.getElementById("result").innerHTML = "Server reply: " + xhttp.status;
+    }
+  };
+  xhttp.open("POST", url, true);
+  //Send the proper header information along with the request
+  xhttp.setRequestHeader("Content-type", "application/json-rpc");
+  xhttp.send(jsontext);
+}
+
+// ---------------- universal -------------------
+
+function fcnres(xhttp) {
+	objs = JSON.parse(xhttp.responseText);
+	var paragrph = document.getElementById("result");
+	paragrph.innerHTML = "";
+	if( Object.prototype.toString.call( objs ) === '[object Array]' ) {
+		objs = objs;
+	} else {
+		objs = [objs];
+	}
+	var paragrph = document.getElementById("result");
+	for (index = 0; index < objs.length; ++index) {
+		var obj = objs[index];
+		if ( 'result' in obj) {
+			if( Object.prototype.toString.call( obj.result ) === '[object Object]' ) {
+				//if ( 'value' in obj.result && 'status' in obj.result && obj.result.status === true ) {
+					paragrph.innerHTML += JSON.stringify( obj.result );
+				//}
+			} else {
+				paragrph.innerHTML += (null != obj.result)?(obj.result):("null");
+			}
+		} else if ( 'error' in obj) {
+			paragrph.innerHTML += obj.error.message;
+		} else {
+			paragrph.innerHTML += "no properly formatted response!!!"
+		}
+		paragrph.innerHTML += "<br>";
+	}
+	
+	highlight(paragrph);
+
+	clearTimeout(resulttmr);
+	resulttmr = setTimeout(function(){ blackify(paragrph);}, 500);	
+}
+
+// --------------- valves ------------------------
+function fcnvlv(xhttp) {
+	objs = JSON.parse(xhttp.responseText);
+	var paragrph = document.getElementById("result");
+	paragrph.innerHTML = "";
+	if( Object.prototype.toString.call( objs ) === '[object Array]' ) {
+		objs = objs;
+	} else {
+		objs = [objs];
+	}
+	var paragrph = document.getElementById("result");
+	for (index = 0; index < objs.length; ++index) {
+		var obj = objs[index];
+		if ( 'result' in obj) {
+			if( Object.prototype.toString.call( obj.result ) === '[object Object]' ) {
+				if ( 'status' in obj.result && 'rdata' in obj.result && obj.result.status === "tscOK" ) {
+					paragrph.innerHTML += JSON.stringify( obj.result );
+					let vlvstat = parseInt(obj.result.rdata, 16);
+					for (valve = 0; valve < 24; ++valve) {
+						let btn = document.getElementById("vlvbtno" + valve.toString());
+						if (btn) {
+							if (vlvstat & (1 << valve)) {
+								btn.className = "vlvopen";
+							} else {
+								btn.classList.remove("vlvopen");
+							}
+						}
+                        for (let vlv in valves) {
+    						if (valves[vlv].name === "vlvbtno" + valve.toString()){
+    							var rectangle = valves[vlv].button.children[0]; //rectangle of svg btn of valve
+    
+    							if (vlvstat & (1 << valve)) {
+    								rectangle.classList.remove("cls-17"); //red
+    								rectangle.classList.add("cls-27"); //green
+    								valves[vlv].addr = "36"; //prepared to close
+    								valves[vlv].open_state = true;
+    							} else {
+    								rectangle.classList.remove("cls-27"); //green
+    								rectangle.classList.add("cls-17"); //red
+    								valves[vlv].addr = "32"; //prepared to open
+    								valves[vlv].open_state = false;
+    							}
+    						}
+    					}
+					}
+					//svg part:
+
+					if (document.getElementById('interlocksbtn').children[0].classList.contains("cls-27")){
+						interlocks();
+					}
+					let btn = document.getElementById("pwrsavebtn");
+					let txt = document.getElementById("_24V");
+					if (btn) {
+						if (vlvstat & (1 << 31)) {
+							btn.className = "pwrsaveoff";
+							//txt.classList.remove("cls-38");
+							//txt.classList.add("cls-40"); //red
+							txt.innerHTML = "24 V on";
+						} else {
+							btn.classList.remove("pwrsaveoff");
+							//txt.classList.remove("cls-40");
+							//txt.classList.add("cls-38"); //red
+							txt.innerHTML = "24 V off";
+						}
+					}
+				}
+			} else {
+				paragrph.innerHTML += (null != obj.result)?(obj.result):("null");
+			}
+		} else if ( 'error' in obj) {
+			paragrph.innerHTML += obj.error.message;
+		} else {
+			paragrph.innerHTML += "no properly formatted response!!!"
+		}
+		paragrph.innerHTML += "<br>";
+	}
+	
+	highlight(paragrph);
+
+	clearTimeout(resulttmr);
+	resulttmr = setTimeout(function(){ blackify(paragrph);}, 500);	
+}
+
+
+// ---------------- pressure -------------------
+function fcnp(xhttp, idx) {
+	elid = "resp" + idx.toString();
+	var paragrph = document.getElementById(elid);
+	obj = JSON.parse(xhttp.responseText);
+	if ( 'result' in obj) {
+		paragrph.innerHTML = (null != obj.result)?(obj.result):("null");
+	} else if ( 'error' in obj) {
+		paragrph.innerHTML = obj.error.message;
+	} else {
+		paragrph.innerHTML = "no properly formatted response!!!"
+	}
+	highlight(paragrph);
+	
+	var ptmr;
+	if ("resp0" === elid) {
+		ptmr = p0tmr;
+	} else {
+		ptmr = p1tmr;
+	}
+	
+	clearTimeout(ptmr);
+	ptmr = setTimeout(function(){ blackify(paragrph);}, 500);
+	
+	if ("resp0" === elid) {
+		p0tmr = ptmr;
+	} else {
+		p1tmr = ptmr;
+	}
+}
+// ----------------------------------------------------
+function highlight(obj) {
+	obj.style = "color:green";
+}
+function blackify(obj) {
+	obj.style = "color:black";
+}
+
+// ----------------------------------------------------
+var gspolltmr;
+function pollgstat(on) {
+	if ( true == on ) {
+		gspolltmr = setInterval(getgs, 1000);
+	} else {
+		clearInterval(gspolltmr);
+	}
+}
+
+function getgs() {
+	document.getElementById("bgunstatus").click();
+}
+
+
+// ----------------------------------------------------
+var iplottmr;
+function plotiemis(on) {
+	if ( true == on ) {
+		for (index = 0; index < idata.length; ++index) {
+			idata[index].x = [];
+			idata[index].y = [];
+		}
+		iplottmr = setInterval(getiemis, 1000);
+	} else {
+		clearInterval(iplottmr);
+	}
+}
+
+function getiemis() {
+	// call jsonrpc
+	//fcnplt('{"jsonrpc":"2.0","id":12,"result":1}');
+	iemisrpc('jsonrpc', fcnplti);
+}
+// ----------------------------------------------------
+var pplottmr;
+function plotp(on) {
+	if ( true == on ) {
+		for (index = 0; index < pdata.length; ++index) {
+			pdata[index].x = [];
+			pdata[index].y = [];
+		}
+		pplottmr = setInterval(getp, 500);
+		Plotly.newPlot('pplot', pdata, playout);
+	} else {
+		clearInterval(pplottmr);
+	}
+}
+
+function getp() {
+	// call jsonrpc
+	//fcnplt('{"jsonrpc":"2.0","id":12,"result":1}');
+	pplotrpc('jsonrpc', fcnpltp);
+	updatePressureValues();
+}
+
+
+function pplotrpc(url, cfunc) {
+  var xhttp;
+  var rpcobj = [
+		{jsonrpc:"2.0", method:"chbr.prs?", params: { value: 0}, id : Math.random().toString(16).substr(2, 5)},
+		{jsonrpc:"2.0", method:"chbr.prs?", params: { value: 1}, id : Math.random().toString(16).substr(2, 5)},
+        {jsonrpc:"2.0", method:"chbr.prs?", params: { value: 2}, id : Math.random().toString(16).substr(2, 5)},
+		{jsonrpc:"2.0", method:"chbr.prs?", params: { value: 3}, id : Math.random().toString(16).substr(2, 5)},
+		{jsonrpc:"2.0", method:"sem.prs?", params: { value: 0}, id : Math.random().toString(16).substr(2, 5)},
+		{jsonrpc:"2.0", method:"sem.prs?", params: { value: 1}, id : Math.random().toString(16).substr(2, 5)}
+	];
+  var jsontext = JSON.stringify(rpcobj);
+  xhttp=new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (xhttp.readyState == 4 && xhttp.status == 200) {
+      cfunc(xhttp);
+    } else if (xhttp.readyState == 4) {
+      document.getElementById("result").innerHTML = "Server reply: " + xhttp.status;
+	  document.getElementById("chbp").checked = false; // turn off the timer
+	  document.getElementById("chbp").onchange(false);
+    }
+  };
+  xhttp.open("POST", url, true);
+  //Send the proper header information along with the request
+  xhttp.setRequestHeader("Content-type", "application/json-rpc");
+  xhttp.send(jsontext);
+}
+
+
+var playout = {
+ /* xaxis: {
+    type: 'log',
+    autorange: true
+  },*/
+  yaxis: {
+    type: 'log',
+    autorange: true,
+	exponentformat: 'e',
+    showexponent: 'All'
+  }
+};
+var pdata = [ 
+				{ x: [], y: [], type: 'scatter', name: 'chamber FRG/AIB [Pa]'  },
+				{ x: [], y: [], type: 'scatter', name: 'chamber IMG300 [Pa]' },
+				{ x: [], y: [], type: 'scatter', name: 'chamber HFIG [Pa]'  },
+				{ x: [], y: [], type: 'scatter', name: 'loadlock FRG [Pa]' },
+				{ x: [], y: [], type: 'scatter', name: 'FEG GUN [Pa]' },
+				{ x: [], y: [], type: 'scatter', name: 'FEG COL [Pa]' }
+			];
+function fcnpltp(xhttp) {
+	objs = JSON.parse(xhttp.responseText);
+	var t = new Date();
+	
+	redraw = false;
+	
+	if( Object.prototype.toString.call( objs ) === '[object Array]' ) {
+		objs = objs;
+	} else {
+		objs = [objs];
+	}
+
+	for (index = 0; index < objs.length; ++index) {
+		var obj = objs[index];
+		if ( 'result' in obj && obj.result !== null  ) {
+			if ( typeof obj.result === 'object' && 'value' in obj.result ) {
+				pdata[index].x.push(t);
+				pdata[index].y.push(obj.result.value);
+			} else {
+				pdata[index].x.push(t);
+				pdata[index].y.push(obj.result);
+			}
+			redraw = true;
+		}
+		var limit = document.getElementById("phisti").value;
+		if(pdata[index].x.length > limit) {
+			pdata[index].x = pdata[index].x.slice(-limit);
+			pdata[index].y = pdata[index].y.slice(-limit);
+		}
+	}
+	if (redraw) {
+		//Plotly.newPlot('pplot', pdata, playout);
+		Plotly.redraw('pplot');
+	}	
+}
+
+function plot() {
+
+
+
+
+	/* Current Plotly.js version */
+	//console.log( Plotly.BUILD );
+}
+</script>
+</body>
+</html>
