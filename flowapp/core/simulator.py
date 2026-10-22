@@ -8,7 +8,7 @@ from . import dde
 from .channel import ChannelInfo, ChannelState
 
 DEFAULT_CHANNELS = [
-    # address, gas, capacity, unit (addresses as on the lab bus)
+    # address, gas, capacity, unit[, serial] (addresses as on the lab bus); config/simulator.json overrides this
     (4, "O2", 10.0, "mln/min"),
     (5, "Ar", 10.0, "mln/min"),
     (6, "He", 10.0, "mln/min"),
@@ -51,11 +51,12 @@ class SimBus:
         self.winked = []
 
     def open(self):
+        # A real serial number in the spec makes test mode use that instrument's saved name, colour and max flow.
         self.channels = [
-            ChannelInfo(address=a, serial=f"SIM-{gas}", device_type="EL-FLOW Prestige (sim)", fluid=gas,
-                        capacity=cap, unit=unit, user_tag="", control_mode=dde.BUS_CONTROL,
-                        firmware="sim", setpoint_slope=0)
-            for a, gas, cap, unit in self._spec
+            ChannelInfo(address=a, serial=(rest[0] if rest and rest[0] else f"SIM-{a}-{gas}"),
+                        device_type="EL-FLOW Prestige (sim)", fluid=gas, capacity=cap, unit=unit, user_tag="",
+                        control_mode=dde.BUS_CONTROL, firmware="sim", setpoint_slope=0)
+            for a, gas, cap, unit, *rest in self._spec
         ]
         self._setpoint = {c.address: 0.0 for c in self.channels}
         self._measure = {c.address: 0.0 for c in self.channels}

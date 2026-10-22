@@ -17,10 +17,22 @@ The `.venv` folder is not synced through git. Each computer builds its own (`set
 ## Run
 - `run.bat` starts the app and connects to the port from the config, or finds the instruments automatically
   (COM9 is tried first, Bluetooth ports are skipped).
-- `run.bat COM5` uses a specific port, `run.bat --sim` uses simulated instruments (no hardware needed).
-- In the app, the port list also has **Simulator (no hardware)**. Simulated mode shows an orange
-  SIMULATOR badge, and the Simulator menu can fake faults: unplugged cable, an instrument not answering,
-  analog mode, closed gas supply, noise.
+- `run.bat COM5` uses a specific port.
+
+## Test mode (no gas flows)
+Use test mode on any computer, including the lab PC, to try setpoints, ramps, mixtures and (later)
+programs and presets without putting gas into the chamber.
+- **`test_mode.bat`** starts a test-only session: the app uses simulated instruments and **never opens the
+  real flow controllers** (the hardware ports are not offered and are refused). Same as `run.bat --sim`.
+- In a normal session (`run.bat`) you can also pick **Test mode** in the port list (disconnect from the
+  real instruments first; disconnecting sets their flows to 0).
+- Test mode is marked by an orange **TEST MODE** strip and `[TEST MODE]` in the window title; exported
+  files start with `TEST_`.
+- The **Test mode** menu fakes faults: unplugged cable, an instrument not answering, analog mode,
+  closed gas supply, noisy signal.
+- `config/simulator.json` sets the simulated instruments (address, gas, capacity, unit, response time,
+  noise). Add channels to try other mixtures. With a real `serial` number, a simulated channel uses that
+  instrument's saved name, colour and max flow.
 
 ## Using the app
 - **Cards (left):** one per instrument with measured flow, setpoint read back from the device, valve %,
@@ -51,7 +63,7 @@ The `.venv` folder is not synced through git. Each computer builds its own (`set
 - `probe.bat` lists the connected instruments: address, serial number, gas, capacity and unit, control
   mode and the current flow. `probe.bat --full` also reads extra parameters (firmware, fluid slot,
   setpoint slope, pressure/temperature sensors, ...) and saves the report in `logs/`.
-  Everything the probe does is read-only.
+  Everything the probe does is read-only. `probe.bat --sim` probes the test-mode instruments.
 - `.venv\Scripts\python -m flowapp --monitor [COM9] [--sim]` shows live values in the console.
 - `run_legacy.bat` starts the old Tkinter app (temporary fallback).
 
@@ -67,6 +79,7 @@ The `.venv` folder is not synced through git. Each computer builds its own (`set
 - `config/settings.json`: shared defaults (port `auto`, poll rate, graph history). Synced through git.
 - `config/local.json`: settings for this computer only, e.g. `{"port": "COM9"}`. Not synced.
 - `config/channels.json`: name, gas, colour, max flow and step per instrument serial number.
+- `config/simulator.json`: the instruments simulated in test mode.
 - Window layout, theme and view options are remembered per computer (Windows registry).
 
 ## Tests

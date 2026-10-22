@@ -10,7 +10,7 @@ import sys
 import time
 from datetime import datetime
 
-from .config import ROOT, load_settings
+from .config import ROOT, load_settings, load_simulator
 from .core import dde
 from .core.bronkhorst import BronkhorstBus
 from .core.simulator import SimBus
@@ -18,7 +18,7 @@ from .core.worker import InstrumentWorker
 
 
 def build_bus(settings):
-    return SimBus() if settings.simulate else BronkhorstBus(settings.port)
+    return SimBus(**load_simulator()) if settings.simulate else BronkhorstBus(settings.port)
 
 
 def fmt(value, digits=3, suffix=""):
@@ -87,7 +87,8 @@ def monitor(worker, channels, duration):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m flowapp", description="Bronkhorst flow controller tools")
     parser.add_argument("port", nargs="?", help="COM port, e.g. COM9 (default: config, then auto-detect)")
-    parser.add_argument("--sim", action="store_true", help="use simulated instruments instead of hardware")
+    parser.add_argument("--sim", action="store_true",
+                        help="test mode: simulated instruments from config/simulator.json, real ones are disabled")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--probe", action="store_true", help="list the connected instruments and exit")
     mode.add_argument("--monitor", action="store_true", help="show live values until Ctrl+C")

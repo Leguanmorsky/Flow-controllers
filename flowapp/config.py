@@ -52,6 +52,24 @@ def load_settings(overrides=None, config_dir=CONFIG_DIR, env=os.environ):
     return Settings(**{k: v for k, v in data.items() if k in known})
 
 
+def load_simulator(path=CONFIG_DIR / "simulator.json"):
+    """SimBus options from config/simulator.json: the instruments simulated in test mode."""
+    data = _read_json(path)
+    options = {}
+    if "channels" in data:
+        channels = [(int(c["address"]), str(c["gas"]), float(c["capacity"]), str(c.get("unit", "mln/min")),
+                     str(c.get("serial", ""))) for c in data["channels"]]
+        addresses = [c[0] for c in channels]
+        if not channels or len(set(addresses)) != len(addresses):
+            raise ValueError(f"{path}: give at least one channel and every address only once.")
+        options["channels"] = channels
+    if "tau_s" in data:
+        options["tau"] = float(data["tau_s"])
+    if "noise" in data:
+        options["noise"] = float(data["noise"])
+    return options
+
+
 def load_channels(path=CONFIG_DIR / "channels.json"):
     known = {f.name for f in fields(ChannelConfig)}
     return {serial: ChannelConfig(**{k: v for k, v in cfg.items() if k in known})

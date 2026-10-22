@@ -69,8 +69,13 @@ class MainWindow(QMainWindow):
     # --- layout -----------------------------------------------------------------------------
 
     def _build_ui(self):
-        self.bar = ConnectionBar()
+        self.bar = ConnectionBar(test_only=self.settings.simulate)
         self.bar.refresh_ports(SIM_PORT if self.settings.simulate else self.settings.port)
+        self.test_strip = QLabel("TEST MODE  ·  simulated instruments  ·  nothing is sent to the real flow "
+                                 "controllers, no gas flows")
+        self.test_strip.setAlignment(Qt.AlignCenter)
+        self.test_strip.setStyleSheet(f"background: {th.SERIOUS}; color: #0b0b0b; font-weight: bold; padding: 4px;")
+        self.test_strip.hide()
 
         self.cards_widget = QWidget()
         self.cards_layout = QVBoxLayout(self.cards_widget)
@@ -119,6 +124,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self.bar)
+        layout.addWidget(self.test_strip)
         layout.addWidget(self.v_split, 1)
         self.setCentralWidget(central)
 
@@ -168,7 +174,7 @@ class MainWindow(QMainWindow):
         self.zero_action.setEnabled(False)
         instruments_menu.addAction("Refresh port list", lambda: self.bar.refresh_ports())
 
-        self.sim_menu = menu.addMenu("&Simulator")
+        self.sim_menu = menu.addMenu("&Test mode")
         self.sim_menu.aboutToShow.connect(self._sync_sim_menu)
         self.sim_menu.menuAction().setVisible(False)
 
@@ -190,26 +196,33 @@ class MainWindow(QMainWindow):
         QApplication.styleHints().colorSchemeChanged.connect(self._system_theme_changed)
 
     def _show_placeholder(self, problem=""):
-        text = ("Not connected.\n\nChoose a port above and press Connect, or pick “Simulator (no hardware)” "
-                "to try the app without instruments.")
+        if self.settings.simulate:
+            text = "Test mode: press Connect to start the simulated instruments. No gas flows."
+        else:
+            text = ("Not connected.\n\nChoose a port above and press Connect, or pick “Test mode” to try "
+                    "everything with simulated instruments (no gas flows).")
         self.placeholder.setText(f"{problem}\n\n{text}" if problem else text)
         self.placeholder.show()
 
     def _update_title(self):
-        self.setWindowTitle("Flow controllers" + (" [SIMULATOR]" if self.bridge.simulated else ""))
+        test = self.bridge.simulated or self.settings.simulate
+        self.setWindowTitle("Flow controllers" + (" [TEST MODE]" if test else ""))
+        self.test_strip.setVisible(test)
 
     # --- connection -------------------------------------------------------------------------
 
     def _connect_port(self, port):
-        label = {"auto": "auto-detect", SIM_PORT: "simulator"}.get(port, port)
+        label = {"auto": "auto-detect", SIM_PORT: "test mode"}.get(port, port)
         self.bar.set_state("connecting", f"Connecting ({label})…")
         self.placeholder.setText("Connecting…")
         self.bridge.connect_to(port)
 
     def _on_connected(self, channels):
         self._build_cards(channels)
-        self.bar.set_state("connected", f"{self.bridge.bus.port} · {len(channels)} instrument(s)")
-        self.bar.set_simulated(self.bridge.simulated)
+        if self.bridge.simulated:
+            self.bar.set_state("connected", f"Test mode · {len(channels)} simulated instrument(s)")
+        else:
+            self.bar.set_state("connected", f"{self.bridge.bus.port} · {len(channels)} instrument(s)")
         self.zero_action.setEnabled(True)
         self._build_sim_menu()
         self._update_title()
@@ -221,7 +234,6 @@ class MainWindow(QMainWindow):
     def _on_disconnected(self):
         self._clear_cards()
         self.bar.set_state("disconnected", "Not connected")
-        self.bar.set_simulated(False)
         self.zero_action.setEnabled(False)
         self.sim_menu.menuAction().setVisible(False)
         self._update_title()
@@ -403,7 +415,7 @@ class MainWindow(QMainWindow):
             return
         self.bridge.bus.set_fault(name, address, on)
         where = f" on {self.bridge.name(address)}" if address is not None else ""
-        self.log_event("warning", f"Simulator: “{FAULTS[name]}”{where} {'on' if on else 'off'}.")
+        self.log_event("warning", f"Test mode: “{FAULTS[name]}”{where} {'on' if on else 'off'}.")
 
     def _sync_sim_menu(self):
         if not self.bridge.simulated:
@@ -488,7 +500,8 @@ class MainWindow(QMainWindow):
             self.log_event("warning", "Nothing to export yet: connect and record some data first.")
             return
         EXPORT_DIR.mkdir(exist_ok=True)
-        default = EXPORT_DIR / f"flow_{datetime.now():%Y%m%d_%H%M%S}.{kind}"
+        prefix = "TEST_flow" if self.bridge.simulated else "flow"     # simulated data must not pass for real data
+        default = EXPORT_DIR / f"{prefix}_{datetime.now():%Y%m%d_%H%M%S}.{kind}"
         filters = "PNG image (*.png)" if kind == "png" else "CSV file (*.csv)"
         path, _ = QFileDialog.getSaveFileName(self, "Export", str(default), filters)
         if not path:

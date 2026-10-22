@@ -5,6 +5,7 @@ import pytest
 
 from flowapp import config
 from flowapp.core import ports
+from flowapp.core.simulator import SimBus
 
 
 def port(device, description="USB Serial Port", hwid="USB VID:PID=0403:6001"):
@@ -58,6 +59,33 @@ def test_settings_merge_order(tmp_path):
 
 def test_settings_defaults_without_files(tmp_path):
     assert config.load_settings(config_dir=tmp_path, env={}) == config.Settings()
+
+
+def test_simulator_config(tmp_path):
+    path = tmp_path / "simulator.json"
+    path.write_text(json.dumps({"tau_s": 0.5, "channels": [
+        {"address": 4, "gas": "O2", "capacity": 10, "unit": "mln/min", "serial": "M24207457D"},
+        {"address": 7, "gas": "H2", "capacity": 5}]}))
+    options = config.load_simulator(path)
+    assert options["tau"] == 0.5 and "noise" not in options
+    bus = SimBus(**options)
+    channels = bus.open()
+    assert [(c.address, c.fluid, c.capacity, c.unit, c.serial) for c in channels] == [
+        (4, "O2", 10.0, "mln/min", "M24207457D"), (7, "H2", 5.0, "mln/min", "SIM-7-H2")]
+    assert config.load_simulator(tmp_path / "missing.json") == {}
+
+
+def test_simulator_config_rejects_duplicate_addresses(tmp_path):
+    path = tmp_path / "simulator.json"
+    path.write_text(json.dumps({"channels": [{"address": 4, "gas": "O2", "capacity": 10},
+                                             {"address": 4, "gas": "Ar", "capacity": 10}]}))
+    with pytest.raises(ValueError):
+        config.load_simulator(path)
+
+
+def test_shipped_simulator_config_matches_the_lab_bus():
+    channels = SimBus(**config.load_simulator()).open()
+    assert [c.address for c in channels] == [4, 5, 6]
 
 
 def test_channels_roundtrip(tmp_path):

@@ -9,6 +9,7 @@ import time
 
 from PySide6.QtCore import QObject, Signal, Slot
 
+from ..config import load_simulator
 from ..core import dde
 from ..core.bronkhorst import BronkhorstBus
 from ..core.ramp import RampManager
@@ -21,7 +22,7 @@ SIM_PORT = "SIM"
 
 
 def default_bus_factory(port):
-    return SimBus() if port == SIM_PORT else BronkhorstBus(port)
+    return SimBus(**load_simulator()) if port == SIM_PORT else BronkhorstBus(port)
 
 
 def _error_text(exc):
@@ -43,6 +44,7 @@ class InstrumentBridge(QObject):
     def __init__(self, settings, bus_factory=default_bus_factory, parent=None):
         super().__init__(parent)
         self.settings = settings
+        self.test_only = settings.simulate     # test session: hardware ports are refused
         self.bus_factory = bus_factory
         self.bus = None
         self.worker = None
@@ -114,10 +116,20 @@ class InstrumentBridge(QObject):
         """Opens the bus on a background thread; ends with `connected` or `connect_failed`."""
         if self.worker or self._connecting:
             return
+        if self.test_only and port != SIM_PORT:
+            message = "This is a test-mode session: real instruments are disabled. Start run.bat to use them."
+            self.event.emit("error", message)
+            self.connect_failed.emit(message)
+            return
+        try:
+            bus = self.bus_factory(port)
+        except Exception as e:      # e.g. an invalid config/simulator.json
+            self.event.emit("error", f"Connection failed: {_error_text(e)}")
+            self.connect_failed.emit(_error_text(e))
+            return
         self._connecting = True
         self._attempt += 1
         attempt = self._attempt
-        bus = self.bus_factory(port)
 
         def open_bus():
             try:
@@ -163,7 +175,10 @@ class InstrumentBridge(QObject):
         self.last_poll = self._last_t = None
         self.poll_rate = 0.0
         self.worker.start()
-        self.event.emit("info", f"Connected to {bus.port}: {len(self.channels)} instrument(s).")
+        if self.simulated:
+            self.event.emit("warning", f"TEST MODE: {len(self.channels)} simulated instrument(s), no gas flows.")
+        else:
+            self.event.emit("info", f"Connected to {bus.port}: {len(self.channels)} instrument(s).")
         self.connected.emit(self.channels)
         for c in self.channels:
             if c.capacity <= 0:

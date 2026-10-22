@@ -52,10 +52,34 @@ def card_ready(window, address):
 
 def test_connect_shows_cards(window):
     assert sorted(window.cards) == [4, 5, 6]
-    assert "[SIMULATOR]" in window.windowTitle()
-    assert window.bar.sim_badge.isVisible() and window.zero_action.isEnabled()
+    assert "[TEST MODE]" in window.windowTitle()
+    assert window.test_strip.isVisible() and window.zero_action.isEnabled()
     assert window.sim_menu.menuAction().isVisible()
-    assert "Connected to SIM: 3 instrument(s)." in window.log_text()
+    assert "TEST MODE: 3 simulated instrument(s), no gas flows." in window.log_text()
+    # a normal session still offers the real ports next to test mode
+    ports = [window.bar.port_combo.itemData(i) for i in range(window.bar.port_combo.count())]
+    assert ports[0] == "auto" and ports[-1] == SIM_PORT
+
+
+def test_test_session_cannot_reach_real_instruments(qtbot, tmp_path, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "exec", no_dialog)
+    opened = []
+    settings = Settings(poll_hz=20, simulate=True, auto_connect=False)
+    w = MainWindow(settings, bus_factory=lambda port: opened.append(port) or SimBus(noise=0.0),
+                   channels_path=tmp_path / "channels.json",
+                   qsettings=QSettings(str(tmp_path / "ui.ini"), QSettings.IniFormat))
+    qtbot.addWidget(w)
+    w.show()
+    combo = w.bar.port_combo
+    assert [combo.itemData(i) for i in range(combo.count())] == [SIM_PORT] and not combo.isEnabled()
+    assert w.test_strip.isVisible() and "[TEST MODE]" in w.windowTitle()
+    w.bridge.connect_to("COM9")                  # refused before any port is opened
+    assert opened == [] and not w.bridge.is_connected
+    assert "real instruments are disabled" in w.log_text()
+    w._connect_port(w.bar.selected_port())
+    qtbot.waitUntil(lambda: w.bridge.is_connected)
+    assert opened == [SIM_PORT]
+    w.close()
 
 
 def test_enter_in_spinbox_sends_setpoint(window, qtbot):
@@ -158,7 +182,7 @@ def test_max_flow_limit_from_settings_dialog(window, qtbot, monkeypatch, tmp_pat
     monkeypatch.setattr(dialogs.ChannelSettingsDialog, "exec", fill_in)
     window.cards[4].settings_button.click()
     saved = json.loads((tmp_path / "channels.json").read_text(encoding="utf-8"))
-    assert saved["SIM-O2"]["alias"] == "Oxygen line" and saved["SIM-O2"]["max_flow"] == 5.0
+    assert saved["SIM-4-O2"]["alias"] == "Oxygen line" and saved["SIM-4-O2"]["max_flow"] == 5.0
     assert window.cards[4].name_label.text() == "Oxygen line"
     window.bridge.set_setpoint(4, 8.0)
     qtbot.waitUntil(lambda: window.sim._setpoint[4] == 5.0)
