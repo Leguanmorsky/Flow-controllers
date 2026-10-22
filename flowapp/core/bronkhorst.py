@@ -12,7 +12,7 @@ from . import dde
 from .channel import ChannelInfo, ChannelState
 from .ports import close_port, find_port, get_nodes
 
-POLL_DDES = [dde.FMEASURE, dde.FSETPOINT, dde.MEASURE, dde.SETPOINT, dde.VALVE_OUTPUT]
+POLL_DDES = [dde.FMEASURE, dde.FSETPOINT, dde.MEASURE, dde.SETPOINT, dde.VALVE_OUTPUT, dde.CONTROL_MODE]
 
 
 def _clean(text):
@@ -67,6 +67,8 @@ class BronkhorstBus:
             unit=_clean(read(dde.CAPACITY_UNIT)),
             user_tag=_clean(read(dde.USER_TAG)),
             control_mode=_number(read(dde.CONTROL_MODE)),
+            firmware=_clean(read(dde.FIRMWARE_VERSION)),
+            setpoint_slope=_number(read(dde.SETPOINT_SLOPE)),
         )
 
     def _master_alive(self):
@@ -117,6 +119,9 @@ class BronkhorstBus:
         raw_setpoint = _number(values[dde.SETPOINT])
         raw_valve = _number(values[dde.VALVE_OUTPUT])
         temperature = _number(values.get(dde.TEMPERATURE))
+        control_mode = _number(values[dde.CONTROL_MODE])
+        if control_mode is not None:
+            info.control_mode = control_mode    # it can be changed on the instrument at any time
         return ChannelState(
             address=info.address,
             t=now,
@@ -126,6 +131,7 @@ class BronkhorstBus:
             setpoint_pct=None if raw_setpoint is None else raw_setpoint / dde.FULL_SCALE * 100,
             valve_pct=None if raw_valve is None else raw_valve / dde.VALVE_FULL_SCALE * 100,
             temperature=None if temperature is None else round(temperature, 2),
+            control_mode=control_mode,
         )
 
     def read_states(self):
@@ -142,7 +148,7 @@ class BronkhorstBus:
 
     # --- commands ---------------------------------------------------------------------------
 
-    def _channel(self, address):
+    def channel(self, address):
         for info in self.channels:
             if info.address == address:
                 return info
@@ -150,7 +156,7 @@ class BronkhorstBus:
 
     def set_setpoint(self, address, value):
         """Sets the flow setpoint in capacity units, clamped to [0, capacity]. Returns the value sent."""
-        info = self._channel(address)
+        info = self.channel(address)
         if info.capacity <= 0:
             raise ValueError(f"Capacity of instrument {address} is unknown, cannot set a flow.")
         value = min(max(float(value), 0.0), info.capacity)
@@ -173,7 +179,33 @@ class BronkhorstBus:
         if errors:
             raise RuntimeError("Could not zero: " + "; ".join(errors))
 
+    def set_control_mode(self, address, mode=dde.BUS_CONTROL):
+        """Switches the instrument to a mode that accepts setpoints from the PC. Returns the mode read back."""
+        if mode not in dde.BUS_SETPOINT_MODES:
+            raise ValueError(f"Control mode {mode} is not allowed from the app.")
+        info = self.channel(address)
+        inst = self._instruments[address]
+        if not inst.writeParameter(dde.CONTROL_MODE, mode):
+            raise RuntimeError(f"Instrument {address} did not accept control mode {mode}.")
+        readback = _number(inst.readParameter(dde.CONTROL_MODE))
+        if readback != mode:
+            raise RuntimeError(f"Instrument {address} reports control mode {readback} after writing {mode}.")
+        info.control_mode = readback
+        return readback
+
+    def read_extra(self, address, ddes):
+        """Reads parameters one by one (read-only). Returns {dde: value}, None where unsupported."""
+        self.channel(address)
+        inst = self._instruments[address]
+        values = {}
+        for nr in ddes:
+            try:
+                values[nr] = inst.readParameter(nr)
+            except Exception:
+                values[nr] = None
+        return values
+
     def wink(self, address, seconds=5):
         """Blinks the instrument's LEDs so it can be found on the gas panel."""
-        self._channel(address)
+        self.channel(address)
         return self._instruments[address].wink(seconds)

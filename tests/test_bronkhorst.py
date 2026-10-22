@@ -181,3 +181,51 @@ def test_zero_all_tries_every_instrument(bus, devices):
 def test_wink(bus, devices):
     assert bus.wink(5)
     assert devices[5].winked == 5
+
+
+def test_control_mode_is_polled(bus, devices):
+    assert bus.read_states()[0].control_mode == 0
+    devices[4].values[dde.CONTROL_MODE] = 1       # someone switched the instrument to analog input
+    s = bus.read_states()[0]
+    assert s.control_mode == 1
+    assert not bus.channels[0].accepts_bus_setpoint
+
+
+def test_set_control_mode_writes_and_verifies(bus, devices):
+    devices[4].values[dde.CONTROL_MODE] = 1
+    assert bus.set_control_mode(4) == 0
+    assert devices[4].writes[-1] == (dde.CONTROL_MODE, 0)
+    assert bus.channels[0].accepts_bus_setpoint
+
+
+def test_only_bus_control_modes_can_be_written(bus, devices):
+    for mode in (1, 3, 8, 9, 20):      # analog, valve closed, valve fully open, calibration, valve steering
+        with pytest.raises(ValueError):
+            bus.set_control_mode(4, mode)
+    assert devices[4].writes == []
+
+
+def test_control_mode_readback_mismatch(bus, devices):
+    original = FakeInstrument.writeParameter
+
+    def ignore_mode(self, nr, data):
+        return True if nr == dde.CONTROL_MODE else original(self, nr, data)
+
+    FakeInstrument.writeParameter = ignore_mode
+    try:
+        devices[4].values[dde.CONTROL_MODE] = 1
+        with pytest.raises(RuntimeError, match="reports control mode 1"):
+            bus.set_control_mode(4)
+    finally:
+        FakeInstrument.writeParameter = original
+
+
+def test_read_extra_and_static_info(bus, devices):
+    devices[4].values[dde.FIRMWARE_VERSION] = "V8.21 "
+    devices[4].values[dde.SETPOINT_SLOPE] = 0
+    values = bus.read_extra(4, [dde.FIRMWARE_VERSION, dde.PRESSURE_INLET])
+    assert values == {dde.FIRMWARE_VERSION: "V8.21 ", dde.PRESSURE_INLET: None}
+    assert devices[4].writes == []
+    b = bronkhorst.BronkhorstBus("COM7")
+    b.open()
+    assert (b.channels[0].firmware, b.channels[0].setpoint_slope) == ("V8.21", 0)

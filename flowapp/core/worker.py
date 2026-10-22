@@ -24,6 +24,8 @@ class InstrumentWorker(threading.Thread):
         self._wake = threading.Event()
         self._stop_event = threading.Event()
         self._listeners = []
+        self._ticks = []
+        self._error_listeners = []
         self._lock = threading.Lock()
 
     # --- called from other threads --------------------------------------------------------
@@ -32,6 +34,16 @@ class InstrumentWorker(threading.Thread):
         """`callback(states)` is called from the worker thread after every poll."""
         with self._lock:
             self._listeners.append(callback)
+
+    def add_tick(self, callback):
+        """`callback(now)` is called from the worker thread before every poll (now = time.monotonic())."""
+        with self._lock:
+            self._ticks.append(callback)
+
+    def add_error_listener(self, callback):
+        """`callback(message)` is called from the worker thread when a tick callback raises."""
+        with self._lock:
+            self._error_listeners.append(callback)
 
     def submit(self, func, *args):
         """Runs `func(*args)` on the worker thread before the next poll."""
@@ -51,6 +63,9 @@ class InstrumentWorker(threading.Thread):
 
     def wink(self, address):
         return self.submit(self.bus.wink, address)
+
+    def set_control_mode(self, address, mode):
+        return self.submit(self.bus.set_control_mode, address, mode)
 
     def stop(self, timeout=3.0):
         """Stops polling and closes the bus. Setpoints are left as they are."""
@@ -73,6 +88,20 @@ class InstrumentWorker(threading.Thread):
                 future.set_result(func(*args))
             except Exception as e:
                 future.set_exception(e)
+
+    def _run_ticks(self, now):
+        with self._lock:
+            ticks = list(self._ticks)
+            error_listeners = list(self._error_listeners)
+        for callback in ticks:
+            try:
+                callback(now)
+            except Exception as e:
+                for report in error_listeners:
+                    try:
+                        report(f"{getattr(callback, '__qualname__', callback)}: {e}")
+                    except Exception:
+                        pass
 
     def _poll(self):
         try:
@@ -103,6 +132,7 @@ class InstrumentWorker(threading.Thread):
                 self._run_commands()
                 now = time.monotonic()
                 if now >= next_poll:
+                    self._run_ticks(now)
                     self._poll()
                     next_poll += self.period
                     if next_poll < now:     # polling is slower than requested: don't try to catch up

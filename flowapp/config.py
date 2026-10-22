@@ -20,6 +20,7 @@ class Settings:
     poll_hz: float = 4.0
     history_minutes: float = 60.0   # how much data the live graph can show
     simulate: bool = False
+    auto_connect: bool = True       # the GUI connects on start
 
 
 @dataclass
@@ -28,7 +29,8 @@ class ChannelConfig:
     alias: str = ""
     gas: str = ""
     color: str = ""
-    max_flow: float | None = None
+    max_flow: float | None = None   # soft limit in capacity units, None = capacity
+    step: float | None = None       # +/- step in capacity units, None = 1 % of capacity
 
 
 def _read_json(path):

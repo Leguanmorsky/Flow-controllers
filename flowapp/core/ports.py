@@ -23,6 +23,11 @@ def candidate_ports():
     return scanned, available
 
 
+def describe_ports():
+    """[(device, description, is_bluetooth)] of every serial port, for the port list in the UI."""
+    return [(p.device, p.description or "", is_bluetooth(p)) for p in serial.tools.list_ports.comports()]
+
+
 def close_port(port):
     """Closes the serial port opened by propar and forgets the cached master."""
     master = propar._PROPAR_MASTERS.pop(port, None)

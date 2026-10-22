@@ -15,7 +15,9 @@ class ChannelInfo:
     capacity: float = 0.0       # flow at 100 %, in `unit`
     unit: str = ""
     user_tag: str = ""
-    control_mode: int | None = None
+    control_mode: int | None = None     # updated by every poll
+    firmware: str = ""
+    setpoint_slope: int | None = None   # > 0: the instrument ramps its setpoint internally
 
     @property
     def key(self):
@@ -41,3 +43,4 @@ class ChannelState:
     setpoint_pct: float | None = None
     valve_pct: float | None = None
     temperature: float | None = None    # deg C
+    control_mode: int | None = None

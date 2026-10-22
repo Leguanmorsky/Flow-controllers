@@ -57,3 +57,50 @@ def test_zero_all(sim):
     sim.set_setpoint(5, 2.0)
     sim.zero_all()
     assert all(s.setpoint == 0.0 for s in sim.read_states())
+
+
+def test_fault_unplugged(sim):
+    sim.set_fault("unplugged")
+    assert not any(s.ok for s in sim.read_states())
+    with pytest.raises(RuntimeError):
+        sim.set_setpoint(4, 1.0)
+    with pytest.raises(RuntimeError):
+        sim.zero_all()
+    sim.set_fault("unplugged", on=False)
+    assert all(s.ok for s in sim.read_states())
+
+
+def test_fault_offline_affects_one_instrument(sim):
+    sim.set_fault("offline", 5)
+    ok = {s.address: s.ok for s in sim.read_states()}
+    assert ok == {4: True, 5: False, 6: True}
+
+
+def test_fault_analog_mode_ignores_bus_setpoints(sim):
+    sim.set_fault("analog_mode", 4)
+    sim.set_setpoint(4, 5.0)
+    sim.clock_ref.t += 10.0
+    s = {s.address: s for s in sim.read_states()}[4]
+    assert (s.control_mode, s.setpoint, s.measure) == (1, 0.0, 0.0)
+    assert sim.set_control_mode(4) == 0
+    sim.clock_ref.t += 10.0
+    s = {s.address: s for s in sim.read_states()}[4]
+    assert s.control_mode == 0 and s.measure == pytest.approx(5.0, abs=1e-3)
+    assert not sim.has_fault("analog_mode", 4)
+
+
+def test_fault_no_gas(sim):
+    sim.set_fault("no_gas", 6)
+    sim.set_setpoint(6, 5.0)
+    sim.clock_ref.t += 10.0
+    s = {s.address: s for s in sim.read_states()}[6]
+    assert (s.setpoint, s.measure, s.valve_pct) == (5.0, 0.0, 100.0)
+
+
+def test_fault_validation(sim):
+    with pytest.raises(KeyError):
+        sim.set_fault("smoke")
+    with pytest.raises(KeyError):
+        sim.set_fault("offline", 99)
+    with pytest.raises(ValueError):
+        sim.set_control_mode(4, 8)
