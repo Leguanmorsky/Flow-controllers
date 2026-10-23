@@ -1,8 +1,10 @@
-"""Command line entry point: python -m flowapp
+"""Entry point: python -m flowapp (run.bat and main.py start the same thing)
 
-  python -m flowapp [COM9] [--sim]                    the graphical app (run.bat)
+  python -m flowapp                                   the app, start screen: instruments or test mode
+  python -m flowapp --sim                             the app, straight into test mode (no gas flows)
+  python -m flowapp COM9                              the app, connected to the instruments on COM9
   python -m flowapp --probe [--full] [COM9] [--sim]   list the connected instruments
-  python -m flowapp --monitor [COM9] [--sim]          live readout (Ctrl+C to stop)
+  python -m flowapp --monitor [COM9] [--sim]          live readout in the console (Ctrl+C to stop)
 """
 
 import argparse
@@ -10,62 +12,15 @@ import sys
 import time
 from datetime import datetime
 
-from .config import ROOT, load_settings, load_simulator
-from .core import dde
+from .config import load_settings, load_simulator
 from .core.bronkhorst import BronkhorstBus
+from .core.report import fmt, full_report, probe_table, save_report
 from .core.simulator import SimBus
 from .core.worker import InstrumentWorker
 
 
 def build_bus(settings):
     return SimBus(**load_simulator()) if settings.simulate else BronkhorstBus(settings.port)
-
-
-def fmt(value, digits=3, suffix=""):
-    return "-" if value is None else f"{value:.{digits}f}{suffix}"
-
-
-def print_probe(bus, channels, states, out=print):
-    out(f"Port {bus.port}: {len(channels)} instrument(s)\n")
-    header = f"{'Addr':>4}  {'Serial':<12} {'Type':<18} {'Fluid':<8} {'Capacity':<16} {'Control mode':<16} " \
-             f"{'Measure':>9} {'Setpoint':>9} {'Valve':>7} {'Temp':>8}"
-    out(header)
-    out("-" * len(header))
-    by_address = {s.address: s for s in states}
-    for c in channels:
-        s = by_address.get(c.address)
-        mode = f"{c.control_mode} {dde.control_mode_name(c.control_mode)}"
-        out(f"{c.address:>4}  {c.serial:<12} {c.device_type:<18} {c.fluid:<8} "
-            f"{fmt(c.capacity) + ' ' + c.unit:<16} {mode:<16} "
-            f"{fmt(s.measure if s else None):>9} {fmt(s.setpoint if s else None):>9} "
-            f"{fmt(s.valve_pct if s else None, 1, '%'):>7} {fmt(s.temperature if s else None, 1, ' C'):>8}")
-        if s and not s.ok:
-            out(f"      ! {s.error}")
-        if not c.accepts_bus_setpoint:
-            out("      ! this instrument ignores setpoints sent from the PC in its current control mode")
-        if c.setpoint_slope:
-            out(f"      ! setpoint slope {c.setpoint_slope}: the instrument ramps setpoint changes internally")
-
-
-def probe_extra(bus, channels):
-    """Reads more parameters (read-only) to learn what the instruments support. Returns the report lines."""
-    lines = ["", "Extra parameters (read-only; '-' = not supported or no answer):"]
-    for c in channels:
-        lines.append(f"\n  Address {c.address} ({c.serial})")
-        values = bus.read_extra(c.address, [nr for nr, _ in dde.PROBE_EXTRA])
-        for nr, label in dde.PROBE_EXTRA:
-            value = values.get(nr)
-            text = value.strip() if isinstance(value, str) else ("-" if value is None else f"{value:g}")
-            lines.append(f"    {f'{label} (DDE {nr})':<34} {text or '-'}")
-    return lines
-
-
-def save_report(lines):
-    folder = ROOT / "logs"
-    folder.mkdir(exist_ok=True)
-    path = folder / f"probe_{datetime.now():%Y%m%d_%H%M}.txt"
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return path
 
 
 def monitor(worker, channels, duration):
@@ -85,25 +40,28 @@ def monitor(worker, channels, duration):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="python -m flowapp", description="Bronkhorst flow controller tools")
-    parser.add_argument("port", nargs="?", help="COM port, e.g. COM9 (default: config, then auto-detect)")
+    parser = argparse.ArgumentParser(prog="python -m flowapp", description="Bronkhorst flow controllers")
+    parser.add_argument("port", nargs="?", help="COM port, e.g. COM9: connect straight away (default: start screen)")
     parser.add_argument("--sim", action="store_true",
                         help="test mode: simulated instruments from config/simulator.json, real ones are disabled")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--probe", action="store_true", help="list the connected instruments and exit")
-    mode.add_argument("--monitor", action="store_true", help="show live values until Ctrl+C")
+    mode.add_argument("--monitor", action="store_true", help="show live values in the console until Ctrl+C")
     parser.add_argument("--full", action="store_true",
                         help="with --probe: also read extra parameters and save the report in logs/")
     parser.add_argument("--set", action="append", default=[], metavar="ADDR=VALUE",
                         help="with --monitor: set a flow first, in the instrument's capacity unit")
     parser.add_argument("--duration", type=float, help="with --monitor: stop after this many seconds")
+    parser.add_argument("--console", action="store_true", help=argparse.SUPPRESS)   # used by run.bat only
     args = parser.parse_args(argv)
 
     for stream in (sys.stdout, sys.stderr):
         if stream is not None and hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")    # Windows consoles cannot print every character
 
-    settings = load_settings({"port": args.port, "simulate": args.sim or None})
+    # A port or --sim on the command line skips the start screen.
+    settings = load_settings({"port": args.port, "simulate": args.sim or None,
+                              "auto_connect": True if (args.port or args.sim) else None})
     if not (args.probe or args.monitor):
         from .ui.app import run_gui     # Qt is only needed for the graphical app
         return run_gui(settings)
@@ -116,20 +74,12 @@ def main(argv=None):
         return 1
 
     if args.probe:
-        lines = []
-
-        def out(line=""):
-            print(line)
-            lines.append(line)
-
         try:
-            out(f"Probe {datetime.now():%Y-%m-%d %H:%M:%S}")
-            print_probe(bus, channels, bus.read_states(), out)
-            if args.full:
-                for line in probe_extra(bus, channels):
-                    out(line)
+            states = bus.read_states()
+            lines = full_report(bus, channels, states) if args.full else probe_table(bus.port, channels, states)
         finally:
             bus.close()
+        print("\n".join(lines))
         if args.full:
             print(f"\nReport saved to {save_report(lines)}")
         return 0

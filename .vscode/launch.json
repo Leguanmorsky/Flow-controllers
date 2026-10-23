@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Flow controllers",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "flowapp",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Flow controllers (test mode)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "flowapp",
+            "args": ["--sim"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

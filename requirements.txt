@@ -7,6 +7,3 @@ PySide6-Essentials==6.12.0
 pyserial==3.5
 pytest==9.1.1
 pytest-qt==4.5.0
-# only for the old Tkinter app (run_legacy.bat), removed in Block 3
-matplotlib==3.11.2
-pandas==3.0.6

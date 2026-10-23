@@ -13,6 +13,7 @@ from ..config import load_simulator
 from ..core import dde
 from ..core.bronkhorst import BronkhorstBus
 from ..core.ramp import RampManager
+from ..core.report import full_report
 from ..core.simulator import SimBus
 from ..core.watch import SetpointWatch
 from ..core.worker import InstrumentWorker
@@ -36,6 +37,7 @@ class InstrumentBridge(QObject):
     states_updated = Signal(object)     # list[ChannelState]
     event = Signal(str, str)            # level ("info", "warning", "error"), message
     ramps_changed = Signal()
+    report_ready = Signal(object)       # list of report lines
 
     _opened = Signal(object, object, int)   # bus, channels, attempt
     _open_failed = Signal(str, int)
@@ -387,6 +389,26 @@ class InstrumentBridge(QObject):
         return self._report(self.worker.set_control_mode(address, dde.BUS_CONTROL),
                             f"{name}: control mode not changed",
                             lambda mode: f"{name} switched to “{dde.control_mode_name(mode)}” mode (PC control).")
+
+    def instrument_report(self):
+        """Builds the read-only instrument report on the worker thread; ends with `report_ready`."""
+        if not self.worker:
+            return None
+        worker, bus, channels = self.worker, self.bus, list(self.channels)
+
+        def build():
+            states = [worker.latest[c.address] for c in channels if c.address in worker.latest]
+            lines = full_report(bus, channels, states)
+            return (["TEST MODE: simulated instruments"] + lines) if isinstance(bus, SimBus) else lines
+
+        def done(future):
+            if future.exception() is not None:
+                self.event.emit("error", f"Instrument report failed: {_error_text(future.exception())}")
+            else:
+                self.report_ready.emit(future.result())
+        future = worker.submit(build)
+        future.add_done_callback(done)
+        return future
 
     def wink(self, address):
         if not self.worker:

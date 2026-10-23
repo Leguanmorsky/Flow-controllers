@@ -1,5 +1,5 @@
 {
-  "_help": "Instruments simulated in test mode (test_mode.bat, or 'Test mode' in the port list). No real gas flows. Set address, gas, capacity and unit to match the lab; add channels to try other mixtures. 'serial' is optional: a real serial number makes test mode use that instrument's saved name, colour and max flow. tau_s = response time of the simulated flow, noise = fraction of full scale.",
+  "_help": "Instruments simulated in test mode ('Start test mode' on the start screen, or run.bat --sim). No real gas flows. Set address, gas, capacity and unit to match the lab; add channels to try other mixtures. 'serial' is optional: a real serial number makes test mode use that instrument's saved name, colour and max flow. tau_s = response time of the simulated flow, noise = fraction of full scale.",
   "tau_s": 1.0,
   "noise": 0.002,
   "channels": [

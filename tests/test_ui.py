@@ -9,15 +9,25 @@ import pytest
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import QDialog, QMessageBox
 
-from flowapp.config import Settings
+from flowapp.config import ASSETS_DIR, Settings
 from flowapp.core.simulator import SimBus
 from flowapp.ui import dialogs
+from flowapp.ui import main_window as main_window_module
 from flowapp.ui.bridge import SIM_PORT
 from flowapp.ui.main_window import MainWindow
 
 
 def no_dialog(*args, **kwargs):
     raise AssertionError("unexpected dialog")
+
+
+def make_window(qtbot, tmp_path, factory, make_shortcut=None, **settings):
+    qsettings = QSettings(str(tmp_path / "ui.ini"), QSettings.IniFormat)
+    w = MainWindow(Settings(poll_hz=20, history_minutes=1, **settings), bus_factory=factory,
+                   channels_path=tmp_path / "channels.json", qsettings=qsettings, make_shortcut=make_shortcut)
+    qtbot.addWidget(w)
+    w.show()
+    return w
 
 
 @pytest.fixture
@@ -33,12 +43,9 @@ def window(qtbot, tmp_path, monkeypatch):
         buses.append(bus)
         return bus
 
-    settings = Settings(poll_hz=20, history_minutes=1, auto_connect=False)
-    qsettings = QSettings(str(tmp_path / "ui.ini"), QSettings.IniFormat)
-    w = MainWindow(settings, bus_factory=factory, channels_path=tmp_path / "channels.json", qsettings=qsettings)
-    qtbot.addWidget(w)
-    w.show()
-    w._connect_port(SIM_PORT)
+    w = make_window(qtbot, tmp_path, factory)
+    assert w.stack.currentWidget() is w.start and not w.bar.isVisible()
+    w.start.test_button.click()
     qtbot.waitUntil(lambda: len(w.cards) == 3 and w.bridge.last_poll is not None)
     w.sim = buses[0]
     yield w
@@ -52,34 +59,80 @@ def card_ready(window, address):
 
 def test_connect_shows_cards(window):
     assert sorted(window.cards) == [4, 5, 6]
+    assert window.stack.currentWidget() is window.h_split and window.bar.isVisible()
     assert "[TEST MODE]" in window.windowTitle()
     assert window.test_strip.isVisible() and window.zero_action.isEnabled()
     assert window.sim_menu.menuAction().isVisible()
     assert "TEST MODE: 3 simulated instrument(s), no gas flows." in window.log_text()
-    # a normal session still offers the real ports next to test mode
-    ports = [window.bar.port_combo.itemData(i) for i in range(window.bar.port_combo.count())]
-    assert ports[0] == "auto" and ports[-1] == SIM_PORT
+
+
+def test_start_page_connects_to_the_chosen_port(qtbot, tmp_path, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "exec", no_dialog)
+    opened = []
+
+    def factory(port):
+        opened.append(port)
+        raise ConnectionError(f"No Bronkhorst device answered on {port}.")
+
+    w = make_window(qtbot, tmp_path, factory)
+    combo = w.start.port_combo
+    assert combo.itemData(0) == "auto" and SIM_PORT not in [combo.itemData(i) for i in range(combo.count())]
+    assert w.start.connect_button.isEnabled() and w.test_strip.isHidden()
+    w.start.connect_button.click()
+    assert opened == ["auto"]
+    qtbot.waitUntil(lambda: "Connection failed" in w.start.status_label.text())
+    assert w.stack.currentWidget() is w.start and w.start.connect_button.isEnabled()
 
 
 def test_test_session_cannot_reach_real_instruments(qtbot, tmp_path, monkeypatch):
     monkeypatch.setattr(QMessageBox, "exec", no_dialog)
     opened = []
-    settings = Settings(poll_hz=20, simulate=True, auto_connect=False)
-    w = MainWindow(settings, bus_factory=lambda port: opened.append(port) or SimBus(noise=0.0),
-                   channels_path=tmp_path / "channels.json",
-                   qsettings=QSettings(str(tmp_path / "ui.ini"), QSettings.IniFormat))
-    qtbot.addWidget(w)
-    w.show()
-    combo = w.bar.port_combo
-    assert [combo.itemData(i) for i in range(combo.count())] == [SIM_PORT] and not combo.isEnabled()
+    w = make_window(qtbot, tmp_path, lambda port: opened.append(port) or SimBus(noise=0.0), simulate=True)
+    assert not w.start.connect_button.isEnabled() and not w.start.test_only_note.isHidden()
     assert w.test_strip.isVisible() and "[TEST MODE]" in w.windowTitle()
     w.bridge.connect_to("COM9")                  # refused before any port is opened
     assert opened == [] and not w.bridge.is_connected
     assert "real instruments are disabled" in w.log_text()
-    w._connect_port(w.bar.selected_port())
+    w.start.test_button.click()
     qtbot.waitUntil(lambda: w.bridge.is_connected)
     assert opened == [SIM_PORT]
     w.close()
+
+
+def test_command_line_mode_skips_the_start_page(qtbot, tmp_path):
+    w = make_window(qtbot, tmp_path, lambda port: SimBus(noise=0.0), simulate=True, auto_connect=True)
+    qtbot.waitUntil(lambda: w.bridge.is_connected and w.stack.currentWidget() is w.h_split)
+    w.close()
+
+
+def test_desktop_shortcut_is_created_once(qtbot, tmp_path):
+    calls = []
+    w = make_window(qtbot, tmp_path, lambda port: SimBus(), make_shortcut=lambda: calls.append(1) or "X.lnk")
+    qtbot.waitUntil(lambda: "Desktop shortcut created: X.lnk" in w.log_text(), timeout=4000)
+    w.close()
+    w2 = make_window(qtbot, tmp_path, lambda port: SimBus(), make_shortcut=lambda: calls.append(2) or "X.lnk")
+    qtbot.wait(1500)
+    assert calls == [1]
+    w2.create_shortcut()                         # Help > Create desktop shortcut
+    qtbot.waitUntil(lambda: calls == [1, 2])
+    w2.close()
+
+
+def test_instrument_report(window, qtbot, monkeypatch, tmp_path):
+    shown = []
+    monkeypatch.setattr(dialogs, "show_text", lambda parent, title, text, path: shown.append((text, path)))
+    monkeypatch.setattr(main_window_module, "save_report", lambda lines: tmp_path / "report.txt")
+    window.report_action.trigger()
+    qtbot.waitUntil(lambda: len(shown) == 1)
+    text, path = shown[0]
+    assert text.startswith("TEST MODE") and "Fluid name (DDE 25)" in text and path == tmp_path / "report.txt"
+
+
+def test_logo_files():
+    from PySide6.QtGui import QIcon
+    sizes = [s.width() for s in QIcon(str(ASSETS_DIR / "logo.ico")).availableSizes()]
+    assert 16 in sizes and 256 in sizes
+    assert (ASSETS_DIR / "logo.png").stat().st_size > 1000
 
 
 def test_enter_in_spinbox_sends_setpoint(window, qtbot):
@@ -215,20 +268,20 @@ def test_close_sets_all_flows_to_zero(window, qtbot):
 def test_disconnect_zeroes_and_stops_threads(window, qtbot):
     window.bridge.set_setpoint(5, 2.0)
     qtbot.waitUntil(lambda: window.sim._setpoint[5] == 2.0)
-    window.bar.connect_button.click()       # "Disconnect"
+    window.bar.disconnect_button.click()
     assert not window.bridge.is_connected and window.cards == {}
     assert window.sim._setpoint[5] == 0.0
     assert not any(t.name == "InstrumentWorker" and t.is_alive() for t in threading.enumerate())
-    assert window.bar.connect_button.text() == "Connect"
+    assert window.stack.currentWidget() is window.start
 
 
 def test_zero_failure_asks_before_disconnecting(window, qtbot, monkeypatch):
     answers = ["cancel", "anyway"]
     monkeypatch.setattr(dialogs, "ask_zero_failed", lambda parent, error, action: answers.pop(0))
     window.sim.set_fault("unplugged")
-    window.bar.connect_button.click()
+    window.bar.disconnect_button.click()
     assert window.bridge.is_connected        # the user cancelled
-    window.bar.connect_button.click()
+    window.bar.disconnect_button.click()
     assert not window.bridge.is_connected
     assert "Disconnected without confirming that all flows are 0." in window.log_text()
 

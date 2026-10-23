@@ -1,27 +1,31 @@
-"""Main window: connection bar, channel cards (left), graph (right), log (bottom)."""
+"""Main window: start screen, or connection bar + channel cards (left) + graph (right); log at the bottom."""
 
 import html
 import sys
+import threading
 import time
 from collections import deque
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtCore import QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QActionGroup, QKeySequence
 from PySide6.QtWidgets import (QApplication, QDialog, QFileDialog, QLabel, QMainWindow, QMessageBox,
-                               QPlainTextEdit, QScrollArea, QSplitter, QVBoxLayout, QWidget)
+                               QPlainTextEdit, QScrollArea, QSplitter, QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import __version__
 from ..config import CONFIG_DIR, ROOT, ChannelConfig, load_channels, save_channels
+from ..core.report import save_report
 from ..core.simulator import CHANNEL_FAULTS, FAULTS
+from ..desktop import create_desktop_shortcut
 from . import dialogs
 from . import theme as th
 from .bridge import SIM_PORT, InstrumentBridge, default_bus_factory
 from .channel_card import ChannelCard
 from .connection_bar import ConnectionBar
 from .graph import MIXTURE_MIN_TOTAL, FlowGraph, history_samples, swatch
+from .start_page import StartPage
 from .units import common_unit, decimals_for
 
 EXPORT_DIR = ROOT / "exports"
@@ -38,10 +42,13 @@ def _package_version(name):
 
 
 class MainWindow(QMainWindow):
+    _shortcut_done = Signal(str, str)   # level, message (from the background thread)
+
     def __init__(self, settings, bus_factory=default_bus_factory, channels_path=CONFIG_DIR / "channels.json",
-                 qsettings=None):
+                 qsettings=None, make_shortcut=create_desktop_shortcut):
         super().__init__()
         self.settings = settings
+        self.make_shortcut = make_shortcut     # None: never create a desktop shortcut (tests)
         self.channels_path = Path(channels_path)
         self.qsettings = qsettings if qsettings is not None else QSettings("FlowControllers", "FlowApp")
         self.channel_config = load_channels(self.channels_path)
@@ -59,18 +66,21 @@ class MainWindow(QMainWindow):
         self._restore_state()
         self.apply_theme(self.theme_mode if self.theme_mode in th.MODES else "system")
         self._update_title()
-        self._show_placeholder()
+        self._show_start_page()
         self.status_timer = QTimer(self)
         self.status_timer.timeout.connect(self._update_status)
         self.status_timer.start(500)
-        if settings.auto_connect:
-            QTimer.singleShot(0, lambda: self._connect_port(self.bar.selected_port()))
+        if settings.auto_connect:       # a port or --sim on the command line skips the start screen
+            QTimer.singleShot(0, lambda: self._connect_port(SIM_PORT if settings.simulate else settings.port))
+        if self.make_shortcut and not self.qsettings.value("desktop_shortcut_created", False, type=bool):
+            QTimer.singleShot(1000, self.create_shortcut)
 
     # --- layout -----------------------------------------------------------------------------
 
     def _build_ui(self):
-        self.bar = ConnectionBar(test_only=self.settings.simulate)
-        self.bar.refresh_ports(SIM_PORT if self.settings.simulate else self.settings.port)
+        self.bar = ConnectionBar()
+        self.start = StartPage(test_only=self.settings.simulate)
+        self.start.refresh_ports(self.settings.port)
         self.test_strip = QLabel("TEST MODE  ·  simulated instruments  ·  nothing is sent to the real flow "
                                  "controllers, no gas flows")
         self.test_strip.setAlignment(Qt.AlignCenter)
@@ -81,11 +91,6 @@ class MainWindow(QMainWindow):
         self.cards_layout = QVBoxLayout(self.cards_widget)
         self.cards_layout.setContentsMargins(6, 6, 6, 6)
         self.cards_layout.setSpacing(8)
-        self.placeholder = QLabel()
-        self.placeholder.setWordWrap(True)
-        self.placeholder.setAlignment(Qt.AlignCenter)
-        self.placeholder.setMinimumHeight(200)
-        self.cards_layout.addWidget(self.placeholder)
         self.cards_layout.addStretch(1)
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
@@ -113,8 +118,11 @@ class MainWindow(QMainWindow):
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(LOG_LINES)
         self.log.setPlaceholderText("Log: connections, setpoints, ramps, warnings and errors appear here.")
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.start)
+        self.stack.addWidget(self.h_split)
         self.v_split = QSplitter(Qt.Vertical)
-        self.v_split.addWidget(self.h_split)
+        self.v_split.addWidget(self.stack)
         self.v_split.addWidget(self.log)
         self.v_split.setStretchFactor(0, 1)
         self.v_split.setSizes([700, 150])
@@ -172,20 +180,32 @@ class MainWindow(QMainWindow):
         self.zero_action.setShortcutContext(Qt.ApplicationShortcut)
         self.zero_action.triggered.connect(self.all_to_zero)
         self.zero_action.setEnabled(False)
-        instruments_menu.addAction("Refresh port list", lambda: self.bar.refresh_ports())
+        self.report_action = instruments_menu.addAction("Instrument report…")
+        self.report_action.setToolTip("Read-only report of the connected instruments, saved in logs/")
+        self.report_action.triggered.connect(self.bridge.instrument_report)
+        self.report_action.setEnabled(False)
+        instruments_menu.addSeparator()
+        self.disconnect_action = instruments_menu.addAction("Disconnect")
+        self.disconnect_action.triggered.connect(self._disconnect)
+        self.disconnect_action.setEnabled(False)
 
         self.sim_menu = menu.addMenu("&Test mode")
         self.sim_menu.aboutToShow.connect(self._sync_sim_menu)
         self.sim_menu.menuAction().setVisible(False)
 
         help_menu = menu.addMenu("&Help")
+        help_menu.addAction("Create desktop shortcut", self.create_shortcut)
         help_menu.addAction("About", self._about)
 
     def _connect_signals(self):
-        self.bar.connect_clicked.connect(self._connect_port)
+        self.start.connect_requested.connect(self._connect_port)
+        self.start.test_requested.connect(lambda: self._connect_port(SIM_PORT))
+        self.start.cancel_requested.connect(self.bridge.cancel_connect)
         self.bar.disconnect_clicked.connect(self._disconnect)
         self.bar.all_zero_clicked.connect(self.all_to_zero)
+        self._shortcut_done.connect(self._on_shortcut_done)
         b = self.bridge
+        b.report_ready.connect(self._show_report)
         b.connected.connect(self._on_connected)
         b.connect_failed.connect(self._on_connect_failed)
         b.disconnected.connect(self._on_disconnected)
@@ -195,14 +215,10 @@ class MainWindow(QMainWindow):
         self.graph.export_requested.connect(self.export)
         QApplication.styleHints().colorSchemeChanged.connect(self._system_theme_changed)
 
-    def _show_placeholder(self, problem=""):
-        if self.settings.simulate:
-            text = "Test mode: press Connect to start the simulated instruments. No gas flows."
-        else:
-            text = ("Not connected.\n\nChoose a port above and press Connect, or pick “Test mode” to try "
-                    "everything with simulated instruments (no gas flows).")
-        self.placeholder.setText(f"{problem}\n\n{text}" if problem else text)
-        self.placeholder.show()
+    def _show_start_page(self, message="", error=False):
+        self.stack.setCurrentWidget(self.start)
+        self.bar.hide()
+        self.start.set_idle(message, error)
 
     def _update_title(self):
         test = self.bridge.simulated or self.settings.simulate
@@ -212,32 +228,33 @@ class MainWindow(QMainWindow):
     # --- connection -------------------------------------------------------------------------
 
     def _connect_port(self, port):
-        label = {"auto": "auto-detect", SIM_PORT: "test mode"}.get(port, port)
-        self.bar.set_state("connecting", f"Connecting ({label})…")
-        self.placeholder.setText("Connecting…")
+        label = {"auto": "the instruments (auto-detect)", SIM_PORT: "test mode"}.get(port, port)
+        self.start.set_busy(f"Starting {label}…" if port == SIM_PORT else f"Connecting to {label}…")
         self.bridge.connect_to(port)
 
     def _on_connected(self, channels):
         self._build_cards(channels)
         if self.bridge.simulated:
-            self.bar.set_state("connected", f"Test mode · {len(channels)} simulated instrument(s)")
+            self.bar.set_status(f"Test mode · {len(channels)} simulated instrument(s)", th.SERIOUS)
         else:
-            self.bar.set_state("connected", f"{self.bridge.bus.port} · {len(channels)} instrument(s)")
-        self.zero_action.setEnabled(True)
+            self.bar.set_status(f"Connected to {self.bridge.bus.port} · {len(channels)} instrument(s)")
+        self.stack.setCurrentWidget(self.h_split)
+        self.bar.show()
+        for action in (self.zero_action, self.report_action, self.disconnect_action):
+            action.setEnabled(True)
         self._build_sim_menu()
         self._update_title()
 
     def _on_connect_failed(self, message):
-        self.bar.set_state("disconnected", f"Connection failed: {message}", error=True)
-        self._show_placeholder(f"Connection failed: {message}")
+        self._show_start_page(f"Connection failed: {message}", error=True)
 
     def _on_disconnected(self):
         self._clear_cards()
-        self.bar.set_state("disconnected", "Not connected")
-        self.zero_action.setEnabled(False)
+        for action in (self.zero_action, self.report_action, self.disconnect_action):
+            action.setEnabled(False)
         self.sim_menu.menuAction().setVisible(False)
         self._update_title()
-        self._show_placeholder()
+        self._show_start_page()
         self._update_status()
 
     def _disconnect(self):
@@ -295,7 +312,6 @@ class MainWindow(QMainWindow):
 
     def _build_cards(self, channels):
         self._clear_cards()
-        self.placeholder.hide()
         names, colors = {}, {}
         for index, info in enumerate(channels):
             card = ChannelCard(info)
@@ -447,7 +463,7 @@ class MainWindow(QMainWindow):
             self._applying_theme = False
         self.theme_actions[mode].setChecked(True)
         self.graph.apply_theme(self.theme)
-        self.placeholder.setStyleSheet(f"color: {self.theme.text_secondary};")
+        self.start.apply_theme(self.theme)
         self._restyle_cards()
         self.log.clear()
         for entry in self._log_entries:
@@ -524,6 +540,38 @@ class MainWindow(QMainWindow):
                           f"PySide6 {_package_version('PySide6-Essentials')} · "
                           f"pyqtgraph {_package_version('pyqtgraph')}<br>"
                           f"Config folder: {CONFIG_DIR}")
+
+    # --- instrument report, desktop shortcut --------------------------------------------------
+
+    def _show_report(self, lines):
+        try:
+            path = save_report(lines)
+            self.log_event("info", f"Instrument report saved to {path}")
+        except OSError as e:
+            path = None
+            self.log_event("error", f"Could not save the instrument report: {e}")
+        dialogs.show_text(self, "Instrument report", "\n".join(lines), path)
+
+    def create_shortcut(self):
+        """Creates the desktop shortcut on a background thread (PowerShell takes a moment)."""
+        if not self.make_shortcut:
+            return
+
+        def work():
+            try:
+                path = self.make_shortcut()
+            except Exception as e:
+                self._shortcut_done.emit("warning", f"Could not create the desktop shortcut: {e}")
+            else:
+                self._shortcut_done.emit("info", f"Desktop shortcut created: {path}")
+
+        threading.Thread(target=work, name="DesktopShortcut", daemon=True).start()
+
+    def _on_shortcut_done(self, level, message):
+        self.log_event(level, message)
+        if level == "info":
+            self.qsettings.setValue("desktop_shortcut_created", True)
+            self.qsettings.sync()
 
     # --- persistence ------------------------------------------------------------------------
 

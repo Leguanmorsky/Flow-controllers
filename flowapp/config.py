@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config"
+ASSETS_DIR = ROOT / "flowapp" / "assets"
 
 
 @dataclass
@@ -20,7 +21,7 @@ class Settings:
     poll_hz: float = 4.0
     history_minutes: float = 60.0   # how much data the live graph can show
     simulate: bool = False
-    auto_connect: bool = True       # the GUI connects on start
+    auto_connect: bool = False      # connect on start (a port or --sim on the command line), else start screen
 
 
 @dataclass

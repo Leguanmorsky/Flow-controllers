@@ -4,8 +4,11 @@ import sys
 import traceback
 
 import pyqtgraph as pg
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+from ..config import ASSETS_DIR, ROOT
+from ..desktop import set_taskbar_identity
 from .main_window import MainWindow
 
 # Windows console events: close button, log off, shut down
@@ -30,10 +33,23 @@ def _zero_when_console_closes(window):
     ctypes.windll.kernel32.SetConsoleCtrlHandler(window._console_handler, True)
 
 
+def _log_to_file_without_console():
+    """pythonw (run.bat, desktop shortcut) has no console: keep the log and any error in logs/last_run.log."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    folder = ROOT / "logs"
+    folder.mkdir(exist_ok=True)
+    stream = open(folder / "last_run.log", "w", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr = stream
+
+
 def run_gui(settings):
+    _log_to_file_without_console()
+    set_taskbar_identity()
     pg.setConfigOptions(antialias=True)
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("Flow controllers")
+    app.setWindowIcon(QIcon(str(ASSETS_DIR / "logo.ico")))
     window = MainWindow(settings)
 
     def excepthook(exc_type, exc, tb):

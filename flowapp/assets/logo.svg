@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Flow controllers: three gas lines (the app's channel colours) mixed into one flow -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f405a"/>
+      <stop offset="1" stop-color="#121a26"/>
+    </linearGradient>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="54" fill="url(#bg)" stroke="#5b7090" stroke-width="5"/>
+  <g fill="none" stroke-linecap="round" stroke-width="20">
+    <path d="M52 74 C 102 74 108 128 152 128" stroke="#3d8ff0"/>
+    <path d="M52 182 C 102 182 108 128 152 128" stroke="#f2793f"/>
+    <path d="M52 128 L 152 128" stroke="#22c08a"/>
+  </g>
+  <path d="M146 128 H 176" stroke="#ffffff" stroke-width="26" stroke-linecap="round"/>
+  <path d="M174 98 L 208 128 L 174 158 Z" fill="#ffffff" stroke="#ffffff" stroke-width="10" stroke-linejoin="round"/>
+</svg>

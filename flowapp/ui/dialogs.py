@@ -1,8 +1,9 @@
 """Dialogs: channel settings and the questions the app asks."""
 
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QFontDatabase, QGuiApplication
 from PySide6.QtWidgets import (QCheckBox, QColorDialog, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
-                               QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QWidget)
+                               QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton,
+                               QVBoxLayout, QWidget)
 
 from ..config import ChannelConfig
 from ..core import dde
@@ -101,6 +102,27 @@ class ChannelSettingsDialog(QDialog):
             max_flow=self.limit_spin.value() if self.limit_check.isChecked() else None,
             step=self.step_spin.value(),
         )
+
+
+def show_text(parent, title, text, path=None):
+    """Read-only text (e.g. the instrument report) with a Copy button."""
+    dialog = QDialog(parent)
+    dialog.setWindowTitle(title)
+    layout = QVBoxLayout(dialog)
+    view = QPlainTextEdit(text)
+    view.setReadOnly(True)
+    view.setLineWrapMode(QPlainTextEdit.NoWrap)
+    view.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
+    layout.addWidget(view)
+    if path:
+        layout.addWidget(QLabel(f"Saved to {path}"))
+    buttons = QDialogButtonBox(QDialogButtonBox.Close)
+    copy = buttons.addButton("Copy", QDialogButtonBox.ActionRole)
+    copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(text))
+    buttons.rejected.connect(dialog.reject)
+    layout.addWidget(buttons)
+    dialog.resize(900, 560)
+    dialog.exec()
 
 
 def confirm(parent, title, text):
