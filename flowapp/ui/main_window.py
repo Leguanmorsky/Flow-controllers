@@ -113,7 +113,7 @@ class MainWindow(QMainWindow):
         self.test_strip = QLabel("TEST MODE  ·  simulated instruments  ·  nothing is sent to the real flow "
                                  "controllers, no gas flows")
         self.test_strip.setAlignment(Qt.AlignCenter)
-        self.test_strip.setStyleSheet(f"background: {th.SERIOUS}; color: #0b0b0b; font-weight: bold; padding: 4px;")
+        self.test_strip.setStyleSheet(f"background: {th.SERIOUS}; color: #0b0b0b; font-weight: bold; padding: 1px;")
         self.test_strip.hide()
 
         self.cards_widget = QWidget()
@@ -155,6 +155,7 @@ class MainWindow(QMainWindow):
         self.tabs.setDocumentMode(True)
         self.tabs.addTab(self.h_split, "Flows")
         self.tabs.addTab(self.vacuum, "Vacuum")
+        self.tabs.setCornerWidget(self.bar, Qt.TopRightCorner)     # status + buttons share the tab row
 
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -173,7 +174,6 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self.bar)
         layout.addWidget(self.test_strip)
         layout.addWidget(self.v_split, 1)
         self.setCentralWidget(central)
@@ -265,7 +265,7 @@ class MainWindow(QMainWindow):
         c.event.connect(self.log_event)
         self.strip.acknowledge_requested.connect(c.acknowledge_trip)
         v = self.vacuum
-        v.strip.acknowledge_requested.connect(c.acknowledge_trip)
+        v.acknowledge_requested.connect(c.acknowledge_trip)
         v.valve_requested.connect(self._valve_requested)
         v.command_requested.connect(self._card_command)
         v.rule_toggled.connect(self._rule_toggled)

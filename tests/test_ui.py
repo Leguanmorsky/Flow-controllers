@@ -496,6 +496,7 @@ def test_advanced_commands_and_ups(window, qtbot, monkeypatch):
     qtbot.waitUntil(lambda: "decontaminator ON" in window.log_text())
     window._card_command("gun", "vent")
     qtbot.waitUntil(lambda: window.card.sim_card.gun_state == "vented")
+    qtbot.waitUntil(lambda: window.card.sim_card.pressures["gun"] > 1e-3)
     window._card_command("beam", True)       # the simulated card refuses: gun pressure too high
     qtbot.waitUntil(lambda: "beam interlock" in window.log_text(), timeout=5000)
 

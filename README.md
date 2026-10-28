@@ -162,6 +162,7 @@ localhost), never on hardware or the real card (the UI tests run offscreen).
 | `flowapp/config.py`, `flowapp/desktop.py` | Settings; desktop shortcut and taskbar icon |
 | `tests/` | pytest suite |
 | `docs/` | Pressure-control integration brief and the UHV SEM card web page (the protocol reference) |
+| `CLAUDE.md`, `docs/APP_GUIDE.md` | For AI coding sessions: architecture, safety rules, how to merge other apps |
 
 ## Note
 The Bronkhorst library on PyPI is `bronkhorst-propar`. The package named just `propar` is unrelated and

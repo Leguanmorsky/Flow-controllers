@@ -14,16 +14,16 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
-from PySide6.QtWidgets import (QCheckBox, QDoubleSpinBox, QFrame, QGraphicsEllipseItem, QGraphicsItem,
+from PySide6.QtWidgets import (QCheckBox, QDialog, QDoubleSpinBox, QFrame, QGraphicsEllipseItem, QGraphicsItem,
                                QGraphicsPathItem, QGraphicsRectItem, QGraphicsScene, QGraphicsSimpleTextItem,
                                QGraphicsView, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                               QScrollArea, QSplitter, QToolButton, QVBoxLayout, QWidget)
+                               QScrollArea, QSizePolicy, QSplitter, QVBoxLayout, QWidget)
 
 from ..core.safety import RULES
 from ..core.vacuum import GAUGE_BY_KEY, GAUGES, VALVE_BY_NAME, VALVES, interlock_reason
 from . import theme as th
 from .graph import PressureAxis
-from .vacuum_widgets import PressureStrip, fmt_pa
+from .vacuum_widgets import LEVEL_COLORS, fmt_pa
 
 # --- topology, in the coordinates of the web page's drawing -------------------------------------------
 
@@ -381,6 +381,7 @@ class VacuumView(QWidget):
     rule_toggled = Signal(str, bool)            # rule, protection on
     address_saved = Signal(str)
     control_toggled = Signal(bool)
+    acknowledge_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -390,7 +391,6 @@ class VacuumView(QWidget):
         self.control_allowed = False
         self.pump_path = []
 
-        self.strip = PressureStrip(gauges=("chamber_frg", "chamber_img", "chamber_hfig", "loadlock_frg", "gun"))
         self.lock_banner = QLabel()
         self.lock_banner.setWordWrap(True)
         self.lock_banner.hide()
@@ -401,43 +401,45 @@ class VacuumView(QWidget):
         left = QSplitter(Qt.Vertical)
         left.addWidget(self.diagram)
         left.addWidget(self.mini)
-        left.setStretchFactor(0, 3)
+        left.setStretchFactor(0, 5)
         left.setStretchFactor(1, 1)
+        left.setSizes([700, 130])
         self.left_split = left
 
         side = QWidget()
         side_layout = QVBoxLayout(side)
         side_layout.setContentsMargins(6, 0, 6, 6)
+        side_layout.addWidget(self._status_box())
         side_layout.addWidget(self._pressures_box())
         side_layout.addWidget(self._valves_box())
-        side_layout.addWidget(self._status_box())
-        self.advanced_toggle = QToolButton(text="Advanced")
-        self.advanced_toggle.setCheckable(True)
-        self.advanced_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.advanced_toggle.setArrowType(Qt.RightArrow)
-        self.advanced_toggle.toggled.connect(self._toggle_advanced)
-        side_layout.addWidget(self.advanced_toggle)
+        self.advanced_button = QPushButton("Advanced…")
+        self.advanced_button.setToolTip("Card address and control, gas protections, chamber / gun / other commands")
+        self.advanced_button.clicked.connect(self.show_advanced)
+        side_layout.addWidget(self.advanced_button)
+        # Advanced lives in its own window, so the side panel stays narrow and the diagram large.
         self.advanced = self._advanced_box()
-        self.advanced.hide()
-        side_layout.addWidget(self.advanced)
+        self.advanced_dialog = QDialog(self)
+        self.advanced_dialog.setWindowTitle("Vacuum – Advanced")
+        dialog_layout = QVBoxLayout(self.advanced_dialog)
+        dialog_layout.addWidget(self.advanced)
         side_layout.addStretch(1)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(side)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setMinimumWidth(400)
+        scroll.setMinimumWidth(330)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self.split = QSplitter(Qt.Horizontal)
         self.split.addWidget(left)
         self.split.addWidget(scroll)
         self.split.setStretchFactor(0, 1)
-        self.split.setSizes([900, 420])
+        self.split.setStretchFactor(1, 0)
+        self.split.setSizes([1150, 350])
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 0)
-        layout.setSpacing(6)
-        layout.addWidget(self.strip)
+        layout.setContentsMargins(2, 2, 2, 0)
+        layout.setSpacing(4)
         layout.addWidget(self.lock_banner)
         layout.addWidget(self.split, 1)
 
@@ -464,7 +466,13 @@ class VacuumView(QWidget):
         self.valve_rows = {}
         for row, valve in enumerate(VALVES):
             name = QLabel(f"<b>{valve.name}</b>")
+            name.setToolTip(valve.label)
             label = QLabel(valve.label)
+            label.setToolTip(valve.label)
+            label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)    # shrinks; the buttons stay visible
+            font = label.font()
+            font.setPointSizeF(font.pointSizeF() * 0.9)
+            label.setFont(font)
             state = QLabel("–")
             button = QPushButton("Open")
             button.setFixedWidth(64)
@@ -478,8 +486,16 @@ class VacuumView(QWidget):
         return box
 
     def _status_box(self):
-        box = QGroupBox("Card")
+        box = QGroupBox("Status")
         layout = QVBoxLayout(box)
+        self.gas_label = QLabel()
+        self.gas_label.setWordWrap(True)
+        self.gas_label.setTextFormat(Qt.RichText)
+        self.ack_button = QPushButton("Acknowledge pressure trip")
+        self.ack_button.clicked.connect(self.acknowledge_requested)
+        self.ack_button.hide()
+        layout.addWidget(self.gas_label)
+        layout.addWidget(self.ack_button)
         self.card_status = QLabel()
         self.card_status.setWordWrap(True)
         self.chamber_status = QLabel()
@@ -567,18 +583,15 @@ class VacuumView(QWidget):
         layout.addWidget(other)
         return box
 
-    def _toggle_advanced(self, on):
-        self.advanced.setVisible(on)
-        self.advanced_toggle.setArrowType(Qt.DownArrow if on else Qt.RightArrow)
-
     def show_advanced(self):
-        self.advanced_toggle.setChecked(True)
+        self.advanced_dialog.show()
+        self.advanced_dialog.raise_()
+        self.advanced_dialog.activateWindow()
 
     # --- updates ----------------------------------------------------------------------------
 
     def apply_theme(self, theme):
         self.theme = theme
-        self.strip.apply_theme(theme)
         self.diagram.apply_theme(theme)
         self.mini.apply_theme(theme)
         for key, (name, value) in self.pressure_labels.items():
@@ -613,7 +626,6 @@ class VacuumView(QWidget):
 
     def update_state(self, state):
         self.state = state
-        self.strip.set_card(state, self.mode)
         self.diagram.update_state(state, self.pump_path, self.control_allowed)
         ok = state is not None and state.ok
         for key, (_, value) in self.pressure_labels.items():
@@ -650,4 +662,10 @@ class VacuumView(QWidget):
         return value if isinstance(value, str) else json.dumps(value)
 
     def set_gas(self, status):
-        self.strip.set_gas(status)
+        if status is None:
+            self.gas_label.setText("")
+            self.ack_button.hide()
+            return
+        color = LEVEL_COLORS.get(status.level, th.WARNING)
+        self.gas_label.setText(f'<span style="color:{color}">●</span> {status.reason}')
+        self.ack_button.setVisible(status.rule == "trip")

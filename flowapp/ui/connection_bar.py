@@ -1,4 +1,4 @@
-"""Top bar while connected: connection status, Disconnect and ALL TO 0."""
+"""Connection status, Disconnect and ALL TO 0; sits in the tab row next to the Flows / Vacuum tabs."""
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
@@ -13,9 +13,10 @@ class ConnectionBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setContentsMargins(8, 2, 4, 2)
+        layout.setSpacing(6)
         self.status_label = QLabel()
-        self.status_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.status_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.disconnect_button = QPushButton("Disconnect")
         self.disconnect_button.setToolTip("Set every flow to 0 and go back to the start screen")
         self.disconnect_button.setMinimumWidth(100)
@@ -23,11 +24,11 @@ class ConnectionBar(QWidget):
         self.zero_button.setToolTip("Cancel all ramps and set every flow to 0 (F12).\n"
                                     "This is a software command, not a hardware interlock.")
         self.zero_button.setStyleSheet(
-            f"QPushButton {{ background: {th.CRITICAL}; color: white; font-weight: bold; padding: 6px 18px; "
+            f"QPushButton {{ background: {th.CRITICAL}; color: white; font-weight: bold; padding: 3px 18px; "
             f"border-radius: 4px; }} QPushButton:disabled {{ background: #9b8f8f; color: #eeeeee; }}")
-        layout.addWidget(self.status_label, 1)
+        layout.addWidget(self.status_label)
+        layout.addSpacing(10)
         layout.addWidget(self.disconnect_button)
-        layout.addSpacing(8)
         layout.addWidget(self.zero_button)
         self.disconnect_button.clicked.connect(self.disconnect_clicked)
         self.zero_button.clicked.connect(self.all_zero_clicked)
