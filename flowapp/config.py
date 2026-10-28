@@ -7,7 +7,7 @@ config/local.json is per computer and not synced through git (e.g. {"port": "COM
 
 import json
 import os
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -34,6 +34,21 @@ class ChannelConfig:
     step: float | None = None       # +/- step in capacity units, None = 1 % of capacity
 
 
+@dataclass
+class CardConfig:
+    """The UHV SEM control card: config/card.json, plus card_address / card_control_enabled in local.json."""
+    address: str = ""               # empty = no card on this PC
+    control_enabled: bool = False   # real card: valves and commands stay locked until enabled on that PC
+    poll_hz: float = 5.0
+    timeout_s: float = 1.0
+    stale_s: float = 2.0            # no pressure data for longer: flows go to 0
+    p_max_pa: float = 1.0           # chamber pressure above: flows go to 0 (latched)
+    pumped_below_pa: float = 1e-2   # the main chamber counts as pumped below this
+    trip_gauge: str = "chamber_frg"
+    pump_path: list = field(default_factory=lambda: ["V16", "V17", "V04", "FV1"])
+    graph_gauges: list = field(default_factory=lambda: ["chamber_frg", "chamber_img", "chamber_hfig"])
+
+
 def _read_json(path):
     try:
         with open(path, encoding="utf-8") as f:
@@ -51,6 +66,27 @@ def load_settings(overrides=None, config_dir=CONFIG_DIR, env=os.environ):
     data.update({k: v for k, v in (overrides or {}).items() if v is not None})
     known = {f.name for f in fields(Settings)}
     return Settings(**{k: v for k, v in data.items() if k in known})
+
+
+def load_card_config(config_dir=CONFIG_DIR):
+    data = {k: v for k, v in _read_json(config_dir / "card.json").items() if not k.startswith("_")}
+    local = _read_json(config_dir / "local.json")
+    if "card_address" in local:
+        data["address"] = local["card_address"]
+    if "card_control_enabled" in local:
+        data["control_enabled"] = local["card_control_enabled"]
+    known = {f.name for f in fields(CardConfig)}
+    return CardConfig(**{k: v for k, v in data.items() if k in known})
+
+
+def save_local(updates, config_dir=CONFIG_DIR):
+    """Merges `updates` into config/local.json (settings of this PC only, not synced)."""
+    path = config_dir / "local.json"
+    data = _read_json(path)
+    data.update(updates)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
 
 
 def load_simulator(path=CONFIG_DIR / "simulator.json"):

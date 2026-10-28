@@ -1,0 +1,11 @@
+{
+  "_help": "UHV SEM control card (vacuum system). The card address and enabling control are set per PC in config/local.json as card_address / card_control_enabled (Vacuum -> Advanced in the app). Test mode always uses a simulated card. stale_s: no pressure data for longer sets every flow to 0. p_max_pa: chamber pressure above it sets every flow to 0 (latched). pumped_below_pa: the main chamber counts as pumped below it. pump_path: valves that must all be open to pump the main chamber while gas flows. Gauges: chamber_frg, chamber_img, chamber_hfig, loadlock_frg, gun, column.",
+  "poll_hz": 5,
+  "timeout_s": 1.0,
+  "stale_s": 2.0,
+  "p_max_pa": 1.0,
+  "pumped_below_pa": 0.01,
+  "trip_gauge": "chamber_frg",
+  "pump_path": ["V16", "V17", "V04", "FV1"],
+  "graph_gauges": ["chamber_frg", "chamber_img", "chamber_hfig"]
+}
