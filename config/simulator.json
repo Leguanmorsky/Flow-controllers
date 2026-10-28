@@ -1,10 +1,10 @@
 {
-  "_help": "Instruments simulated in test mode ('Start test mode' on the start screen, or run.bat --sim). No real gas flows. Set address, gas, capacity and unit to match the lab; add channels to try other mixtures. 'serial' is optional: a real serial number makes test mode use that instrument's saved name, colour and max flow. tau_s = response time of the simulated flow, noise = fraction of full scale.",
-  "tau_s": 1.0,
-  "noise": 0.002,
+  "_help": "Instruments simulated in test mode ('Start test mode' on the start screen, or run.bat --sim). No real gas flows. Set address, gas, capacity and unit to match the lab; add channels to try other mixtures. 'serial' is optional: a real serial number makes test mode use that instrument's saved name, colour and max flow. tau_s = response time of the simulated flow, noise = fraction of full scale. Matches the lab MFCs (instrument report 2026-10-28: M24207457D/B/A, 1 sccm each, ~0.03 % FS noise, settles in < 1 s).",
+  "tau_s": 0.3,
+  "noise": 0.0003,
   "channels": [
-    {"address": 4, "gas": "O2", "capacity": 10.0, "unit": "mln/min", "serial": ""},
-    {"address": 5, "gas": "Ar", "capacity": 10.0, "unit": "mln/min", "serial": ""},
-    {"address": 6, "gas": "He", "capacity": 10.0, "unit": "mln/min", "serial": ""}
+    {"address": 4, "gas": "C2H4", "capacity": 1.0, "unit": "sccm", "serial": ""},
+    {"address": 5, "gas": "CO", "capacity": 1.0, "unit": "sccm", "serial": ""},
+    {"address": 6, "gas": "H2", "capacity": 1.0, "unit": "sccm", "serial": ""}
   ]
 }

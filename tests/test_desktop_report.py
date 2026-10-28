@@ -56,4 +56,4 @@ def test_probe_table_warns_about_local_mode():
 def test_cli_probe_in_test_mode(capsys):
     assert cli.main(["--probe", "--sim"]) == 0
     out = capsys.readouterr().out
-    assert "Port SIM: 3 instrument(s)" in out and "O2" in out
+    assert "Port SIM: 3 instrument(s)" in out and "SIM-4-" in out
