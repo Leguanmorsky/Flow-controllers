@@ -6,7 +6,9 @@ Control software for Bronkhorst mass flow controllers (EL-FLOW Prestige, propar 
 with a **test mode** that simulates the instruments so everything can be tried without gas flowing.
 
 ## Setup (once per computer)
-1. Install Python 3.11 from python.org (keep the "py launcher" option checked).
+1. Install 64-bit Python 3.11 to 3.15 from python.org (3.13 recommended; keep the "py launcher" option
+   checked). `run.bat` installs only ready-made packages, so no C compiler is needed; if the `.venv` was made
+   with an unsupported Python, `run.bat` builds it again with a supported one.
 2. Install the Bronkhorst USB/RS232 driver so the instruments show up as a COM port.
 3. Double-click **`run.bat`**. The first start creates a local `.venv` and installs `requirements.txt`
    (about 70 MB, needs internet), then opens the app. The app puts a **Flow controllers** shortcut on the
