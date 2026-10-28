@@ -12,14 +12,16 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QActionGroup, QKeySequence
 from PySide6.QtWidgets import (QApplication, QDialog, QFileDialog, QLabel, QMainWindow, QMessageBox,
-                               QPlainTextEdit, QScrollArea, QSplitter, QStackedWidget, QVBoxLayout, QWidget)
+                               QPlainTextEdit, QScrollArea, QSplitter, QStackedWidget, QTabWidget, QVBoxLayout,
+                               QWidget)
 
 from .. import __version__
-from ..config import CONFIG_DIR, ROOT, ChannelConfig, load_card_config, load_channels, save_channels
+from ..config import CONFIG_DIR, ROOT, ChannelConfig, load_card_config, load_channels, save_channels, save_local
 from ..core.card_sim import FAULTS as CARD_FAULTS
 from ..core.report import save_report
-from ..core.safety import GasBlocked
+from ..core.safety import RULES, GasBlocked
 from ..core.simulator import CHANNEL_FAULTS, FAULTS
+from ..core.vacuum import VALVE_BY_NAME, interlock_reason
 from ..desktop import create_desktop_shortcut
 from . import dialogs
 from . import theme as th
@@ -30,12 +32,29 @@ from .connection_bar import ConnectionBar
 from .graph import DEFAULT_SLOTS, MIXTURE_MIN_TOTAL, PANELS, FlowGraph, history_samples, swatch
 from .start_page import StartPage
 from .units import common_unit, decimals_for
+from .vacuum_view import VacuumView
 from .vacuum_widgets import PressureStrip
 
 EXPORT_DIR = ROOT / "exports"
 LOG_LINES = 2000
 STALE_S = 2.0       # the status bar turns red when no poll arrived for this long
 THEME_LABELS = {"system": "Follow Windows", "light": "Light", "dark": "Dark"}
+# Card commands that need the user to type a word, and what the confirmation says.
+TYPED_COMMANDS = {
+    ("chamber", "vent"): ("Vent the chamber", "VENT", "The main chamber is vented with N₂. Every MFC flow is set to 0 "
+                                                      "first (unless that protection is off)."),
+    ("gun", "vent"): ("Vent the gun", "VENT", "The FEG gun is vented."),
+    ("gun", "ions"): ("Ion pumps cold start", "IONS", "Cold start of the gun's ion pumps."),
+    ("beam", True): ("Beam on", "BEAM", "Switches the electron beam on."),
+}
+COMMAND_TEXT = {
+    ("chamber", "pump"): "Start the chamber pumping sequence?", ("chamber", "off"): "Switch the chamber off?",
+    ("chamber", "clear"): "Clear the chamber error?", ("gun", "off"): "Switch the gun off?",
+    ("gun", "clear"): "Clear the gun error?", ("beam", False): "Switch the beam off?",
+    ("decontaminator", True): "Switch the decontaminator on?", ("decontaminator", False): "Switch the decontaminator off?",
+    ("unlock", "FV1"): "Unlock FV1?", ("unlock", "VV1"): "Unlock VV1?",
+    ("power_save", None): "Drop the valve supply to 12 V (power save)?",
+}
 PANEL_PRESETS = [("pressure", "mixture"), ("pressure", "valve"), ("mixture", "valve"), ("pressure", "off"),
                  ("off", "off")]
 
@@ -51,10 +70,12 @@ class MainWindow(QMainWindow):
     _shortcut_done = Signal(str, str)   # level, message (from the background thread)
 
     def __init__(self, settings, bus_factory=default_bus_factory, channels_path=CONFIG_DIR / "channels.json",
-                 qsettings=None, make_shortcut=create_desktop_shortcut, card_config_loader=load_card_config):
+                 qsettings=None, make_shortcut=create_desktop_shortcut, card_config_loader=load_card_config,
+                 local_saver=save_local):
         super().__init__()
         self.settings = settings
         self.make_shortcut = make_shortcut     # None: never create a desktop shortcut (tests)
+        self.local_saver = local_saver          # writes settings of this PC (config/local.json)
         self.channels_path = Path(channels_path)
         self.qsettings = qsettings if qsettings is not None else QSettings("FlowControllers", "FlowApp")
         self.channel_config = load_channels(self.channels_path)
@@ -129,13 +150,19 @@ class MainWindow(QMainWindow):
         self.h_split.setStretchFactor(1, 1)
         self.h_split.setSizes([390, 1000])
 
+        self.vacuum = VacuumView()
+        self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
+        self.tabs.addTab(self.h_split, "Flows")
+        self.tabs.addTab(self.vacuum, "Vacuum")
+
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(LOG_LINES)
         self.log.setPlaceholderText("Log: connections, setpoints, ramps, warnings and errors appear here.")
         self.stack = QStackedWidget()
         self.stack.addWidget(self.start)
-        self.stack.addWidget(self.h_split)
+        self.stack.addWidget(self.tabs)
         self.v_split = QSplitter(Qt.Vertical)
         self.v_split.addWidget(self.stack)
         self.v_split.addWidget(self.log)
@@ -202,6 +229,12 @@ class MainWindow(QMainWindow):
         self.disconnect_action.triggered.connect(self._disconnect)
         self.disconnect_action.setEnabled(False)
 
+        vacuum_menu = menu.addMenu("&Vacuum")
+        vacuum_menu.addAction("Vacuum diagram", lambda: self.tabs.setCurrentWidget(self.vacuum))
+        vacuum_menu.addAction("Advanced…", self._show_vacuum_advanced)
+        vacuum_menu.addSeparator()
+        vacuum_menu.addAction("Acknowledge pressure trip", self.card.acknowledge_trip)
+
         self.sim_menu = menu.addMenu("&Test mode")
         self.sim_menu.aboutToShow.connect(self._sync_sim_menu)
         self.sim_menu.menuAction().setVisible(False)
@@ -228,9 +261,16 @@ class MainWindow(QMainWindow):
         self.graph.export_requested.connect(self.export)
         c = self.card
         c.vacuum_updated.connect(self._on_vacuum)
-        c.gas_status_changed.connect(self.strip.set_gas)
+        c.gas_status_changed.connect(self._on_gas_status)
         c.event.connect(self.log_event)
         self.strip.acknowledge_requested.connect(c.acknowledge_trip)
+        v = self.vacuum
+        v.strip.acknowledge_requested.connect(c.acknowledge_trip)
+        v.valve_requested.connect(self._valve_requested)
+        v.command_requested.connect(self._card_command)
+        v.rule_toggled.connect(self._rule_toggled)
+        v.address_saved.connect(self._save_card_address)
+        v.control_toggled.connect(self._toggle_card_control)
         QApplication.styleHints().colorSchemeChanged.connect(self._system_theme_changed)
 
     def _show_start_page(self, message="", error=False):
@@ -252,17 +292,12 @@ class MainWindow(QMainWindow):
 
     def _on_connected(self, channels):
         self._build_cards(channels)
-        self.card.start(self.bridge.simulated)
-        if self.card.running:
-            self.graph.start_pressures(int(self.settings.history_minutes * 60 * self.card.config.poll_hz),
-                                       self.card.config.p_max_pa)
-        self.strip.set_card(None, self.card.mode)
-        self.strip.set_gas(self.card.gas_status())
+        self._start_card()
         if self.bridge.simulated:
             self.bar.set_status(f"Test mode · {len(channels)} simulated instrument(s)", th.SERIOUS)
         else:
             self.bar.set_status(f"Connected to {self.bridge.bus.port} · {len(channels)} instrument(s)")
-        self.stack.setCurrentWidget(self.h_split)
+        self.stack.setCurrentWidget(self.tabs)
         self.bar.show()
         for action in (self.zero_action, self.report_action, self.disconnect_action):
             action.setEnabled(True)
@@ -276,6 +311,9 @@ class MainWindow(QMainWindow):
         self.card.stop()
         self.graph.stop_pressures()
         self.strip.set_gas(None)
+        self.vacuum.mini.buffer = None
+        self.vacuum.set_gas(None)
+        self.vacuum.set_session("none", False, [], self.card.config.address, self.card.config.control_enabled)
         self._clear_cards()
         for action in (self.zero_action, self.report_action, self.disconnect_action):
             action.setEnabled(False)
@@ -407,11 +445,160 @@ class MainWindow(QMainWindow):
                                   self.bridge.deviation.get(s.address))
         self.graph.append(states)
         self.card.feed_sim_flows(states, self.bridge.channels)
+        self.vacuum.diagram.set_flows(self._flows_text(states))
         self._update_summary(states)
 
     def _on_vacuum(self, state):
         self.graph.append_pressures(state)
         self.strip.set_card(state, self.card.mode)
+        self.vacuum.update_state(state)
+
+    def _flows_text(self, states):
+        parts = []
+        for s in states:
+            if s.ok and s.measure is not None:
+                info = self.bridge.channel(s.address)
+                parts.append(f"{self.bridge.name(s.address)} {s.measure:.{decimals_for(info.capacity)}f}")
+        unit = common_unit(self.bridge.channels)
+        return " · ".join(parts) + (f" {unit}" if unit and parts else "")
+
+    # --- vacuum card ----------------------------------------------------------------------------
+
+    def _start_card(self):
+        """(Re)starts reading the vacuum card of this session and shows it in both tabs."""
+        self.card.start(self.bridge.simulated)
+        self.graph.stop_pressures()
+        if self.card.running:
+            self.graph.start_pressures(int(self.settings.history_minutes * 60 * self.card.config.poll_hz),
+                                       self.card.config.p_max_pa)
+        self.vacuum.mini.buffer = self.graph.pressures
+        config = self.card.config
+        self.vacuum.set_session(self.card.mode, self.card.control_allowed, config.pump_path, config.address,
+                                config.control_enabled)
+        self.strip.set_card(None, self.card.mode)
+        self._on_gas_status(self.card.gas_status())
+
+    def _on_gas_status(self, status):
+        self.strip.set_gas(status)
+        self.vacuum.set_gas(status)
+        self.vacuum.set_overrides(self.card.supervisor.overrides)
+
+    def _show_vacuum_advanced(self):
+        if self.stack.currentWidget() is self.tabs:
+            self.tabs.setCurrentWidget(self.vacuum)
+        self.vacuum.show_advanced()
+
+    def _valve_requested(self, name):
+        state, card = self.card.latest, self.card
+        if not card.running:
+            self.log_event("warning", f"{name}: no vacuum card in this session.")
+            return
+        if not card.control_allowed:
+            self.log_event("warning", f"{name} not switched: card control is locked on this PC (read-only).")
+            return
+        if state is None or not state.ok or state.register is None:
+            self.log_event("warning", f"{name} not switched: the valve states are unknown right now.")
+            return
+        valve, is_open = VALVE_BY_NAME[name], state.valves[name]
+        if not is_open:
+            reason = interlock_reason(state.valves, name)
+            if reason:
+                self.log_event("warning", f"{name} not opened: {reason}")
+                return
+        action = "Close" if is_open else "Open"
+        text = f"{action} {name} ({valve.label})?"
+        if not is_open and valve.function == "vent":
+            text += "\n\nThis is a vent valve: N₂ gets in."
+            if card.supervisor.active("vent_zero") and self.bridge.gas_flowing():
+                text += " Every MFC flow is set to 0 first."
+        if is_open and name in card.config.pump_path:
+            text += "\n\nThis valve is in the pumping path of the main chamber."
+        if not dialogs.confirm(self, f"{action} valve", text):
+            return
+        if card.supervisor.valve_needs_confirmation() and not dialogs.confirm(
+                self, "Gas is flowing", f"Gas is flowing into the main chamber.\n\n{action} {name} anyway?"):
+            return
+        if is_open:
+            card.close_valve(name)
+        else:
+            card.open_valve(name)
+
+    def _card_command(self, kind, argument):
+        card = self.card
+        if kind == "ups":       # a read: allowed while control is locked
+            card.ups()
+            return
+        if not card.control_allowed:
+            self.log_event("warning", "Not sent: card control is locked on this PC (read-only).")
+            return
+        key = (kind, argument)
+        if kind == "gun_pump" and argument:
+            typed = ("Gun bake-out", "BAKE", f"Starts the gun bake-out of {argument:g} h (the whole cycle takes "
+                                              f"about {argument + 12:g} h).")
+        else:
+            typed = TYPED_COMMANDS.get(key)
+        if typed:
+            title, word, text = typed
+            if not dialogs.confirm_typed(self, title, text, word):
+                self.log_event("info", f"{title}: cancelled.")
+                return
+        else:
+            text = COMMAND_TEXT.get(key, "Start the gun pumping (getter activation, about 10 h)?"
+                                    if kind == "gun_pump" else f"Send {kind} {argument}?")
+            if not dialogs.confirm(self, "Vacuum card", text):
+                return
+        if kind == "chamber":
+            card.chamber(argument)
+        elif kind == "gun":
+            card.gun(argument)
+        elif kind == "gun_pump":
+            card.gun_pump(argument)
+        elif kind == "beam":
+            card.beam(argument)
+        elif kind == "decontaminator":
+            card.decontaminator(argument)
+        elif kind == "unlock":
+            card.unlock(argument)
+        elif kind == "power_save":
+            card.power_save()
+
+    def _rule_toggled(self, rule, on):
+        if not on and not dialogs.confirm(self, "Switch off a gas protection",
+                                          f"Switch off “{RULES[rule]}”?\n\nIt stays off until you disconnect or "
+                                          f"switch it on again."):
+            self.vacuum.set_overrides(self.card.supervisor.overrides)
+            return
+        self.card.set_override(rule, not on)
+        self.vacuum.set_overrides(self.card.supervisor.overrides)
+
+    def _save_card_address(self, address):
+        try:
+            self.local_saver({"card_address": address})
+        except OSError as e:
+            self.log_event("error", f"Could not save the card address: {e}")
+            return
+        self.log_event("info", f"Card address saved for this PC: {address or '(none)'}.")
+        self._restart_real_card()
+
+    def _toggle_card_control(self, on):
+        if on and not dialogs.confirm_typed(
+                self, "Enable card control", "This app may then switch valves and send the chamber, gun and "
+                "other commands to the real card (the interlocks stay on). Do this only after the lab check.",
+                "ENABLE"):
+            self.vacuum.control_check.setChecked(False)
+            return
+        try:
+            self.local_saver({"card_control_enabled": bool(on)})
+        except OSError as e:
+            self.log_event("error", f"Could not save the setting: {e}")
+            return
+        self.log_event("warning" if on else "info",
+                       f"Card control {'enabled' if on else 'locked'} on this PC.")
+        self._restart_real_card()
+
+    def _restart_real_card(self):
+        if self.bridge.is_connected and not self.bridge.simulated:
+            self._start_card()
 
     # --- gas safety ---------------------------------------------------------------------------
 
@@ -528,6 +715,7 @@ class MainWindow(QMainWindow):
         self.theme_actions[mode].setChecked(True)
         self.graph.apply_theme(self.theme)
         self.strip.apply_theme(self.theme)
+        self.vacuum.apply_theme(self.theme)
         self.start.apply_theme(self.theme)
         self._restyle_cards()
         self.log.clear()

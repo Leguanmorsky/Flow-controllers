@@ -9,7 +9,7 @@ import pytest
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import QDialog, QMessageBox
 
-from flowapp.config import ASSETS_DIR, CardConfig, Settings
+from flowapp.config import ASSETS_DIR, CardConfig, Settings, save_local
 from flowapp.core.simulator import SimBus
 from flowapp.ui import dialogs
 from flowapp.ui import main_window as main_window_module
@@ -25,7 +25,8 @@ def make_window(qtbot, tmp_path, factory, make_shortcut=None, **settings):
     qsettings = QSettings(str(tmp_path / "ui.ini"), QSettings.IniFormat)
     w = MainWindow(Settings(poll_hz=20, history_minutes=1, **settings), bus_factory=factory,
                    channels_path=tmp_path / "channels.json", qsettings=qsettings, make_shortcut=make_shortcut,
-                   card_config_loader=lambda: CardConfig())     # never a real card in tests
+                   card_config_loader=lambda: CardConfig(),      # never a real card in tests
+                   local_saver=lambda updates: save_local(updates, tmp_path))
     qtbot.addWidget(w)
     w.show()
     return w
@@ -61,7 +62,7 @@ def card_ready(window, address):
 
 def test_connect_shows_cards(window):
     assert sorted(window.cards) == [4, 5, 6]
-    assert window.stack.currentWidget() is window.h_split and window.bar.isVisible()
+    assert window.stack.currentWidget() is window.tabs and window.bar.isVisible()
     assert "[TEST MODE]" in window.windowTitle()
     assert window.test_strip.isVisible() and window.zero_action.isEnabled()
     assert window.sim_menu.menuAction().isVisible()
@@ -103,7 +104,7 @@ def test_test_session_cannot_reach_real_instruments(qtbot, tmp_path, monkeypatch
 
 def test_command_line_mode_skips_the_start_page(qtbot, tmp_path):
     w = make_window(qtbot, tmp_path, lambda port: SimBus(noise=0.0), simulate=True, auto_connect=True)
-    qtbot.waitUntil(lambda: w.bridge.is_connected and w.stack.currentWidget() is w.h_split)
+    qtbot.waitUntil(lambda: w.bridge.is_connected and w.stack.currentWidget() is w.tabs)
     w.close()
 
 
@@ -351,7 +352,7 @@ def test_closing_the_pump_path_zeroes_the_flows(window, qtbot):
     qtbot.waitUntil(lambda: window.bridge.gas_flowing())
     window.card.close_valve("V04")
     qtbot.waitUntil(lambda: window.sim._setpoint[4] == 0, timeout=5000)
-    assert "Gas safety: every flow set to 0, pumping path closed (V04)." in window.log_text()
+    qtbot.waitUntil(lambda: "Gas safety: every flow set to 0, pumping path closed (V04)." in window.log_text())
     qtbot.waitUntil(lambda: "pumping path closed (V04)" in window.strip.gas_label.text())
 
 
@@ -375,7 +376,7 @@ def test_pressure_trip_zeroes_and_needs_acknowledging(window, qtbot, monkeypatch
     window.card.supervisor.config.p_max_pa = 0.02
     window._request_setpoint(4, 3.0)
     qtbot.waitUntil(lambda: window.sim._setpoint[4] == 0 and window.strip.ack_button.isVisible(), timeout=10000)
-    assert "above the limit" in window.log_text()
+    qtbot.waitUntil(lambda: "above the limit" in window.log_text())
     seen = []
     monkeypatch.setattr(dialogs, "gas_blocked", lambda parent, blocked: (seen.append(blocked.rule), "acknowledge")[1])
     window._request_setpoint(4, 0.001)          # right after the zero: must not pass as "lowering"
@@ -421,3 +422,135 @@ def test_without_card_the_strip_says_so(qtbot, tmp_path, monkeypatch):
     w._request_setpoint(4, 1.0)
     qtbot.waitUntil(lambda: w.bridge.bus._setpoint[4] == 1.0)
     w.bridge.force_disconnect()
+
+
+# --- Vacuum tab ----------------------------------------------------------------------------------------
+
+def yes(*args, **kwargs):
+    return True
+
+
+def test_vacuum_tab_shows_the_valve_register(window, qtbot):
+    window.tabs.setCurrentWidget(window.vacuum)
+    v = window.vacuum
+    qtbot.waitUntil(lambda: "open" in v.valve_rows["V17"][0].text())
+    assert "closed" in v.valve_rows["V06"][0].text() and not v.valve_rows["V06"][1].isEnabled()   # interlock
+    assert "V06" in v.diagram.valves["V06"].toolTip() and "Blocked" in v.diagram.valves["V06"].toolTip()
+    assert v.diagram.path_items, "the pumping path is highlighted"
+    assert "Pa" in v.pressure_labels["chamber_frg"][1].text() and v.lock_banner.isHidden()
+    qtbot.waitUntil(lambda: "ready" in v.chamber_status.text())
+
+
+def test_blocked_valve_is_not_sent(window, qtbot):
+    window._valve_requested("V06")          # FV1 and V10 are open: no dialog, nothing sent
+    assert "V06 not opened: To open V06" in window.log_text()
+    assert not any(m == "tsc.wrd" and p[0] == "32" for m, p in window.card.sim_card.requests)
+
+
+def test_open_and_close_a_valve(window, qtbot, monkeypatch):
+    monkeypatch.setattr(dialogs, "confirm", yes)
+    window.vacuum.valve_rows["V05"][1].click()
+    qtbot.waitUntil(lambda: window.card.latest.valves.get("V05"))
+    qtbot.waitUntil(lambda: "open" in window.vacuum.valve_rows["V05"][0].text())
+    qtbot.waitUntil(lambda: "Vacuum card: V05 opened." in window.log_text())
+    qtbot.waitUntil(lambda: window.card.latest.supply_24v is False, timeout=3000)    # back to 12 V
+    window.vacuum.valve_rows["V05"][1].click()
+    qtbot.waitUntil(lambda: window.card.latest.valves.get("V05") is False)
+
+
+def test_vent_valve_while_gas_flows(window, qtbot, monkeypatch):
+    asked = []
+    monkeypatch.setattr(dialogs, "confirm", lambda parent, title, text: (asked.append(title), True)[1])
+    window._request_setpoint(4, 1.0)
+    qtbot.waitUntil(lambda: window.sim._setpoint[4] == 1.0 and window.bridge.gas_flowing())
+    window._valve_requested("V05")
+    assert asked == ["Open valve", "Gas is flowing"]
+    assert window.sim._setpoint[4] == 0          # zeroed (and confirmed) before the vent valve was sent
+    qtbot.waitUntil(lambda: "before you open the vent valve V05" in window.log_text())
+    qtbot.waitUntil(lambda: window.card.latest.valves.get("V05"))
+
+
+def test_advanced_vent_needs_typing_and_zeroes_first(window, qtbot, monkeypatch):
+    typed = []
+    monkeypatch.setattr(dialogs, "confirm_typed", lambda parent, title, text, word: (typed.append(word), False)[1])
+    window._request_setpoint(5, 1.0)
+    qtbot.waitUntil(lambda: window.sim._setpoint[5] == 1.0 and window.bridge.gas_flowing())
+    window._card_command("chamber", "vent")
+    assert typed == ["VENT"] and window.sim._setpoint[5] == 1.0 and window.card.sim_card.chamber_state == "ready"
+    monkeypatch.setattr(dialogs, "confirm_typed", lambda *args: True)
+    window._card_command("chamber", "vent")
+    assert window.sim._setpoint[5] == 0
+    qtbot.waitUntil(lambda: window.card.sim_card.chamber_state == "vented")
+    qtbot.waitUntil(lambda: "vent the chamber → True" in window.log_text())
+    qtbot.waitUntil(lambda: not window.card.gas_status().allowed, timeout=8000)    # vented: no gas
+
+
+def test_advanced_commands_and_ups(window, qtbot, monkeypatch):
+    monkeypatch.setattr(dialogs, "confirm", yes)
+    monkeypatch.setattr(dialogs, "confirm_typed", yes)
+    window.vacuum.show_advanced()
+    assert not window.vacuum.advanced.isHidden()
+    window._card_command("ups", None)
+    qtbot.waitUntil(lambda: "UPS: AC OK, battery OK." in window.log_text())
+    window._card_command("decontaminator", True)
+    qtbot.waitUntil(lambda: "decontaminator ON" in window.log_text())
+    window._card_command("gun", "vent")
+    qtbot.waitUntil(lambda: window.card.sim_card.gun_state == "vented")
+    window._card_command("beam", True)       # the simulated card refuses: gun pressure too high
+    qtbot.waitUntil(lambda: "beam interlock" in window.log_text(), timeout=5000)
+
+
+def test_gas_protection_switches(window, qtbot, monkeypatch):
+    monkeypatch.setattr(dialogs, "confirm", lambda *args: False)
+    window.vacuum.rule_checks["vent_zero"].click()
+    assert window.vacuum.rule_checks["vent_zero"].isChecked() and not window.card.supervisor.overrides
+    monkeypatch.setattr(dialogs, "confirm", yes)
+    window.vacuum.rule_checks["vent_zero"].click()
+    assert window.card.supervisor.overrides == {"vent_zero"} and not window.vacuum.rule_checks["vent_zero"].isChecked()
+    window.vacuum.rule_checks["vent_zero"].click()
+    assert not window.card.supervisor.overrides
+
+
+def test_real_card_is_read_only_until_enabled(qtbot, tmp_path, monkeypatch):
+    from flowapp.config import load_card_config
+    from flowapp.core.card_sim import SimCard
+    from flowapp.core.http_mock import MockCardServer
+    from flowapp.ui import bridge as bridge_module
+    monkeypatch.setattr(QMessageBox, "exec", no_dialog)
+    monkeypatch.setattr(dialogs, "confirm", no_dialog)
+    server = MockCardServer(SimCard(seed=4)).start()
+    try:
+        save_local({"card_address": server.address}, tmp_path)
+        monkeypatch.setattr(bridge_module, "SimBus", type("NotThis", (), {}))     # treat the bus as real
+        qsettings = QSettings(str(tmp_path / "ui.ini"), QSettings.IniFormat)
+        w = MainWindow(Settings(poll_hz=20, history_minutes=1, port="COM7", auto_connect=True),
+                       bus_factory=lambda port: SimBus(tau=0.05, noise=0.0),
+                       channels_path=tmp_path / "channels.json", qsettings=qsettings, make_shortcut=None,
+                       card_config_loader=lambda: load_card_config(tmp_path),
+                       local_saver=lambda updates: save_local(updates, tmp_path))
+        qtbot.addWidget(w)
+        w.show()
+        qtbot.waitUntil(lambda: w.card.mode == "real" and w.card.latest is not None and w.card.latest.ok)
+        assert not w.card.control_allowed and not w.vacuum.lock_banner.isHidden()
+        assert "read-only" in w.log_text()
+        assert not w.vacuum.valve_rows["V05"][1].isEnabled()
+        w._valve_requested("V05")
+        assert "card control is locked" in w.log_text()
+        w._card_command("chamber", "vent")
+        assert server.card.chamber_state == "ready"
+        w._card_command("ups", None)            # reads still work
+        qtbot.waitUntil(lambda: "UPS: AC OK" in w.log_text())
+        assert all(m in ("chbr.prs?", "sem.prs?", "chbr.stat?", "sem.stat?") or p in (["40", "", "4"], ["64", "", "2"])
+                   for m, p in server.card.requests)
+
+        monkeypatch.setattr(dialogs, "confirm_typed", lambda *args: True)
+        w.vacuum.control_check.click()
+        qtbot.waitUntil(lambda: w.card.control_allowed and w.card.latest is not None)
+        assert '"card_control_enabled": true' in (tmp_path / "local.json").read_text()
+        monkeypatch.setattr(dialogs, "confirm", yes)
+        w._valve_requested("V05")
+        qtbot.waitUntil(lambda: server.card.register >> 5 & 1)
+        w.close()
+        assert not w.card.running and not w.bridge.is_connected
+    finally:
+        server.stop()

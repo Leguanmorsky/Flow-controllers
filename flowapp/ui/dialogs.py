@@ -2,8 +2,8 @@
 
 from PySide6.QtGui import QColor, QFontDatabase, QGuiApplication
 from PySide6.QtWidgets import (QCheckBox, QColorDialog, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
-                               QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton,
-                               QVBoxLayout, QWidget)
+                               QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
+                               QPushButton, QVBoxLayout, QWidget)
 
 from ..config import ChannelConfig
 from ..core import dde
@@ -165,3 +165,9 @@ def gas_blocked(parent, blocked):
     box.addButton(QMessageBox.Cancel)
     box.exec()
     return "override" if box.clickedButton() is override else None
+
+
+def confirm_typed(parent, title, text, word):
+    """Asks the user to type `word` to confirm a serious command; tests replace this function."""
+    answer, ok = QInputDialog.getText(parent, title, f"{text}\n\nType {word} to confirm:")
+    return ok and answer.strip().upper() == word

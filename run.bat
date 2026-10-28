@@ -5,6 +5,7 @@ rem   run.bat --sim       straight into test mode (simulated instruments, no gas
 rem   run.bat COM9        connect to the instruments on COM9 straight away
 rem   run.bat --console   keep this window open and show the log here (troubleshooting)
 rem   run.bat --probe     list the connected instruments in this window (add --full for more)
+rem   run.bat --card-probe 192.168.1.10   read the vacuum control card once (read-only)
 setlocal
 cd /d "%~dp0"
 set "PY=.venv\Scripts\python.exe"
@@ -52,7 +53,7 @@ if errorlevel 1 (
 copy /y requirements.txt ".venv\requirements.installed" >nul
 
 :start
-echo %* | findstr /i /c:"--console" /c:"--probe" /c:"--monitor" >nul && goto console
+echo %* | findstr /i /c:"--console" /c:"--probe" /c:"--card-probe" /c:"--monitor" >nul && goto console
 rem Normal start: the app runs without a console window (its log is in the app and in logs\).
 start "" ".venv\Scripts\pythonw.exe" -m flowapp %*
 exit /b 0
