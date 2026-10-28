@@ -143,3 +143,25 @@ def ask_zero_failed(parent, error, action):
     box.exec()
     clicked = box.clickedButton()
     return "retry" if clicked is retry else "anyway" if clicked is anyway else "cancel"
+
+
+def gas_blocked(parent, blocked):
+    """Gas was refused by a safety rule. Returns "override", "acknowledge" or None; tests replace this."""
+    if blocked.rule == "trip":
+        box = QMessageBox(QMessageBox.Critical, "Gas blocked: pressure trip",
+                          f"{blocked.reason}\n\nEvery flow was set to 0. Check the chamber before you set gas "
+                          f"again. Acknowledging the trip does not send anything; set the flow again afterwards.",
+                          parent=parent)
+        ack = box.addButton("Acknowledge trip", QMessageBox.AcceptRole)
+        box.addButton(QMessageBox.Cancel)
+        box.exec()
+        return "acknowledge" if box.clickedButton() is ack else None
+    box = QMessageBox(QMessageBox.Warning, "Gas blocked", f"{blocked.reason}\n\nThe setpoint was not sent.",
+                      parent=parent)
+    box.setInformativeText("Override this protection? Gas is then allowed while the main chamber is not "
+                           "confirmed pumped, until you disconnect or switch the protection on again in "
+                           "Vacuum → Advanced.")
+    override = box.addButton("Override and send", QMessageBox.DestructiveRole)
+    box.addButton(QMessageBox.Cancel)
+    box.exec()
+    return "override" if box.clickedButton() is override else None

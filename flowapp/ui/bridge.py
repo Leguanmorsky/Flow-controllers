@@ -57,6 +57,7 @@ class InstrumentBridge(QObject):
         self.deviation = {}     # address -> None, "low" or "high"
         self.last_poll = None   # time.monotonic() when the last states arrived
         self.poll_rate = 0.0
+        self.gas_guard = None   # callable(value): raises GasBlocked when gas must not be set now
         self._attempt = 0
         self._connecting = False
         self._ok = {}
@@ -172,6 +173,7 @@ class InstrumentBridge(QObject):
         self._ok = {}
         self._modes = {c.address: c.control_mode for c in self.channels}
         self._watches = {c.address: SetpointWatch() for c in self.channels}
+        self._commanded = {}    # address -> last setpoint sent by this app (worker thread writes it)
         self.deviation = {}
         self._reconnects = bus.reconnects
         self.last_poll = self._last_t = None
@@ -331,10 +333,39 @@ class InstrumentBridge(QObject):
             return limit
         return max(value, 0.0)
 
+    def check_gas(self, address, value):
+        """Raises GasBlocked when the vacuum system does not allow more gas now. Lowering is always allowed."""
+        state = self.worker.latest.get(address) if self.worker else None
+        current = state.setpoint if state is not None and state.ok and state.setpoint is not None else 0.0
+        # Right after a zero the last poll may still show the old setpoint: use what was last sent too.
+        current = min(current, self._commanded.get(address, current))
+        if value > current and self.gas_guard is not None:
+            self.gas_guard(value)
+
+    def gas_flowing(self):
+        """Thread-safe: any setpoint above 0 or a running ramp."""
+        worker, ramps = self.worker, self.ramps
+        if worker is None:
+            return False
+        if ramps is not None and ramps.ramps:
+            return True
+        return any(s.ok and (s.setpoint or 0) > 0 for s in list(worker.latest.values()))
+
+    def safety_zero(self, reason):
+        """Thread-safe: cancels ramps and sets every flow to 0 because of a gas-safety rule."""
+        worker = self.worker
+        if worker is None:
+            return None
+        return self._report(worker.submit(self._zero_everything), f"Gas safety: could not set the flows to 0 "
+                                                                   f"({reason})",
+                            lambda _: f"Gas safety: every flow set to 0, {reason}.", level="warning")
+
     def set_setpoint(self, address, value, source="user"):
+        """Raises GasBlocked (before anything is sent) when the vacuum system does not allow gas."""
         if not self.worker:
             return None
         value = self._clamp(address, value)
+        self.check_gas(address, value)
         name = self.name(address)
         return self._report(self.worker.submit(self._apply_setpoint, address, value),
                             f"{name}: setpoint not sent",
@@ -343,7 +374,9 @@ class InstrumentBridge(QObject):
     def _apply_setpoint(self, address, value):
         # Worker thread: a manual setpoint ends a running ramp of that channel.
         self.ramps.cancel(address)
-        return self.bus.set_setpoint(address, value)
+        sent = self.bus.set_setpoint(address, value)
+        self._commanded[address] = sent
+        return sent
 
     def all_to_zero(self):
         if not self.worker:
@@ -354,14 +387,21 @@ class InstrumentBridge(QObject):
     def _zero_everything(self):
         # Worker thread: one command, so no ramp step can slip in between.
         self.ramps.cancel_all()
+        for c in self.channels:
+            self._commanded[c.address] = 0.0
         self.bus.zero_all()
 
     def start_ramp(self, address, target, rate_per_min=None, duration_s=None):
         if not self.worker:
             return None
         target = self._clamp(address, target)
+        self.check_gas(address, target)
         rate = rate_per_min / 60.0 if rate_per_min is not None else None
-        return self._report(self.worker.submit(self.ramps.start, address, target, rate, duration_s),
+        def start():
+            ramp = self.ramps.start(address, target, rate, duration_s)
+            self._commanded[address] = max(ramp.start, ramp.target)
+            return ramp
+        return self._report(self.worker.submit(start),
                             f"{self.name(address)}: ramp not started")
 
     def stop_ramp(self, address):

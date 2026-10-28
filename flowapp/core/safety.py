@@ -157,7 +157,9 @@ class GasSupervisor:
         p = chamber_pressure(state, self.config.trip_gauge)
         if p is None:
             return "no valid chamber pressure"
-        if p > self.config.pumped_below_pa:
+        # While gas flows the pressure comes from that gas (p_max guards it), so the vacuum check is
+        # only for starting gas: was the chamber under vacuum?
+        if p > self.config.pumped_below_pa and not self.flowing():
             gauge = GAUGE_BY_KEY.get(self.config.trip_gauge)
             return (f"main chamber not pumped ({gauge.short if gauge else 'chamber'} {_fmt_pa(p)} > "
                     f"{_fmt_pa(self.config.pumped_below_pa)})")
@@ -172,14 +174,17 @@ class GasSupervisor:
             raise GasBlocked(status.reason, status.rule)
 
     def before_vent(self, what, override=False):
-        """Call before a vent command; sets every flow to 0 first unless overridden. True when it zeroed."""
+        """Call before a vent command; sets every flow to 0 first unless overridden.
+
+        Returns False when nothing was done, else what zero_all returned (a Future to wait for) or True.
+        """
         if not self.card_present or not self.flowing():
             return False
         if override or "vent_zero" in self.overrides:
             self.on_event("warning", f"Gas keeps flowing while you {what} (protection overridden).")
             return False
-        self.zero_all(f"before you {what}")
-        return True
+        result = self.zero_all(f"before you {what}")
+        return result if result is not None else True
 
     def valve_needs_confirmation(self):
         return self.flowing() and "confirm_valves" not in self.overrides

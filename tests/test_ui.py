@@ -9,7 +9,7 @@ import pytest
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import QDialog, QMessageBox
 
-from flowapp.config import ASSETS_DIR, Settings
+from flowapp.config import ASSETS_DIR, CardConfig, Settings
 from flowapp.core.simulator import SimBus
 from flowapp.ui import dialogs
 from flowapp.ui import main_window as main_window_module
@@ -24,7 +24,8 @@ def no_dialog(*args, **kwargs):
 def make_window(qtbot, tmp_path, factory, make_shortcut=None, **settings):
     qsettings = QSettings(str(tmp_path / "ui.ini"), QSettings.IniFormat)
     w = MainWindow(Settings(poll_hz=20, history_minutes=1, **settings), bus_factory=factory,
-                   channels_path=tmp_path / "channels.json", qsettings=qsettings, make_shortcut=make_shortcut)
+                   channels_path=tmp_path / "channels.json", qsettings=qsettings, make_shortcut=make_shortcut,
+                   card_config_loader=lambda: CardConfig())     # never a real card in tests
     qtbot.addWidget(w)
     w.show()
     return w
@@ -47,6 +48,7 @@ def window(qtbot, tmp_path, monkeypatch):
     assert w.stack.currentWidget() is w.start and not w.bar.isVisible()
     w.start.test_button.click()
     qtbot.waitUntil(lambda: len(w.cards) == 3 and w.bridge.last_poll is not None)
+    qtbot.waitUntil(lambda: w.card.latest is not None)
     w.sim = buses[0]
     yield w
     if w.bridge.is_connected:
@@ -316,3 +318,106 @@ def test_theme_switch_keeps_working(window, qtbot):
     assert not window.theme.dark
     window.bridge.set_setpoint(4, 1.0)
     qtbot.waitUntil(lambda: window.cards[4].device_setpoint == 1.0)
+
+
+# --- vacuum card in the Flows tab (simulated card) ----------------------------------------------------
+
+def test_pressure_panel_and_strip(window, qtbot):
+    assert window.card.mode == "sim" and window.card.control_allowed
+    assert "TEST MODE: simulated vacuum card and chamber." in window.log_text()
+    qtbot.waitUntil(lambda: window.graph.pressures is not None and len(window.graph.pressures) >= 3)
+    qtbot.waitUntil(lambda: window.graph._curve("pressure", "chamber_frg").isVisible())
+    assert window.graph.pressure_plot.isVisible() and window.graph.mix_plot.isVisible()
+    assert "Simulated vacuum card" in window.strip.card_label.text()
+    assert "Pa" in window.strip.values["chamber_frg"][1].text()
+    assert "Gas allowed" in window.strip.gas_label.text()
+    window.graph.set_slots(("valve", "off"))
+    assert window.graph.valve_plot.isVisible() and not window.graph.pressure_plot.isVisible()
+    assert not window.graph.gauge_checks["chamber_frg"].isVisible()
+    window.graph.set_slots(("pressure", "valve"))
+    assert window.graph.pressure_plot.isVisible() and not window.graph.mix_plot.isVisible()
+
+
+def test_simulated_chamber_sees_the_flows(window, qtbot):
+    qtbot.waitUntil(lambda: window.card.latest.pressures["chamber_frg"] is not None)
+    base = window.card.latest.pressures["chamber_frg"]
+    window._request_setpoint(4, 2.0)
+    qtbot.waitUntil(lambda: window.card.latest.pressures["chamber_frg"] > 100 * base, timeout=10000)
+
+
+def test_closing_the_pump_path_zeroes_the_flows(window, qtbot):
+    window._request_setpoint(4, 2.0)
+    qtbot.waitUntil(lambda: window.sim._setpoint[4] == 2.0)
+    qtbot.waitUntil(lambda: window.bridge.gas_flowing())
+    window.card.close_valve("V04")
+    qtbot.waitUntil(lambda: window.sim._setpoint[4] == 0, timeout=5000)
+    assert "Gas safety: every flow set to 0, pumping path closed (V04)." in window.log_text()
+    qtbot.waitUntil(lambda: "pumping path closed (V04)" in window.strip.gas_label.text())
+
+
+def test_gas_blocked_asks_and_override_sends(window, qtbot, monkeypatch):
+    window.card.close_valve("V17")
+    qtbot.waitUntil(lambda: not window.card.gas_status().allowed)
+    answers = [None, "override"]
+    asked = []
+    monkeypatch.setattr(dialogs, "gas_blocked", lambda parent, blocked: (asked.append(blocked), answers.pop(0))[1])
+    window._request_setpoint(5, 1.0)
+    assert len(asked) == 1 and "V17" in asked[0].reason and window.sim._setpoint[5] == 0
+    window._request_setpoint(5, 1.0)
+    qtbot.waitUntil(lambda: window.sim._setpoint[5] == 1.0)
+    assert "block_unpumped" in window.card.supervisor.overrides
+    assert "overridden" in window.strip.gas_label.text()
+    window._request_setpoint(5, 0.5)            # lowering never asks
+    qtbot.waitUntil(lambda: window.sim._setpoint[5] == 0.5)
+
+
+def test_pressure_trip_zeroes_and_needs_acknowledging(window, qtbot, monkeypatch):
+    window.card.supervisor.config.p_max_pa = 0.02
+    window._request_setpoint(4, 3.0)
+    qtbot.waitUntil(lambda: window.sim._setpoint[4] == 0 and window.strip.ack_button.isVisible(), timeout=10000)
+    assert "above the limit" in window.log_text()
+    seen = []
+    monkeypatch.setattr(dialogs, "gas_blocked", lambda parent, blocked: (seen.append(blocked.rule), "acknowledge")[1])
+    window._request_setpoint(4, 0.001)          # right after the zero: must not pass as "lowering"
+    assert seen == ["trip"] and window.sim._setpoint[4] == 0
+    window.card.supervisor.config.p_max_pa = 1.0
+    window.card.acknowledge_trip()
+    assert window.card.gas_status().rule != "trip" and not window.strip.ack_button.isVisible()
+    qtbot.waitUntil(lambda: window.card.gas_status().allowed, timeout=10000)     # once the chamber recovered
+
+
+def test_card_outage_in_test_mode(window, qtbot):
+    window._request_setpoint(6, 1.0)
+    qtbot.waitUntil(lambda: window.sim._setpoint[6] == 1.0 and window.bridge.gas_flowing())
+    window.card.set_sim_fault("unreachable", True)
+    qtbot.waitUntil(lambda: "no data" in window.strip.card_label.text())
+    qtbot.waitUntil(lambda: window.sim._setpoint[6] == 0, timeout=6000)
+    qtbot.waitUntil(lambda: "no pressure data" in window.log_text())
+    window.card.set_sim_fault("unreachable", False)
+    qtbot.waitUntil(lambda: "Vacuum card answering again." in window.log_text())
+
+
+def test_csv_export_has_pressures(window, qtbot, tmp_path):
+    qtbot.waitUntil(lambda: window.graph.sample_count() >= 5 and len(window.graph.pressures) >= 3)
+    window.graph.export_csv(tmp_path / "data.csv")
+    rows = list(csv.reader(open(tmp_path / "data.csv", encoding="utf-8")))
+    assert "Chamber FRG [Pa]" in rows[0]
+    column = rows[0].index("Chamber FRG [Pa]")
+    assert any(row[column] for row in rows[1:])
+
+
+def test_without_card_the_strip_says_so(qtbot, tmp_path, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "exec", no_dialog)
+
+    class RealLikeBus(SimBus):     # a "real" bus: the bridge does not treat it as test mode
+        pass
+
+    from flowapp.ui import bridge as bridge_module
+    monkeypatch.setattr(bridge_module, "SimBus", type("NotThis", (), {}))
+    w = make_window(qtbot, tmp_path, lambda port: RealLikeBus(tau=0.05, noise=0.0), port="COM7", auto_connect=True)
+    qtbot.waitUntil(lambda: len(w.cards) == 3)
+    assert w.card.mode == "none" and not w.card.running
+    assert "No vacuum card" in w.strip.card_label.text() and "protections are off" in w.strip.gas_label.text()
+    w._request_setpoint(4, 1.0)
+    qtbot.waitUntil(lambda: w.bridge.bus._setpoint[4] == 1.0)
+    w.bridge.force_disconnect()

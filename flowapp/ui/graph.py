@@ -1,5 +1,10 @@
-"""Live graph: flow, valve % and mixture % panels on a shared time axis."""
+"""Live graph: the flow panel plus two switchable lower panels (pressure, mixture %, valve %) on one time axis.
 
+Each panel has a header with its title and unit and its own background, so the panels are easy to tell
+apart; the pressure panel uses the gauge colours (not the MFC colours) on a log axis.
+"""
+
+import math
 from datetime import datetime
 
 import numpy as np
@@ -7,20 +12,36 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from ..core.vacuum import GAUGES
 from . import theme as th
-from .history import SeriesBuffer
+from .history import PressureBuffer, SeriesBuffer
 from .units import common_unit, decimals_for
 
 WINDOWS = [("1 min", 60), ("5 min", 300), ("15 min", 900), ("60 min", 3600), ("All", None)]
-MIXTURE_MIN_TOTAL = 0.01    # mixture % is blank while the total flow is below 1 % of the summed capacities
+MIXTURE_MIN_TOTAL = 0.002   # mixture % is blank while the total flow is below 0.2 % of the summed capacities
+PANELS = {"pressure": "Chamber pressure", "mixture": "Mixture", "valve": "Valve drive", "off": "Off"}
+PANEL_UNITS = {"pressure": "Pa, log scale", "mixture": "% of the total flow", "valve": "% of the MFC valve signal"}
+DEFAULT_SLOTS = ("pressure", "mixture")
+
+
+class PressureAxis(pg.AxisItem):
+    """Log axis labelled 1e-5, 1e-4, … (only whole decades get a label)."""
+
+    def logTickStrings(self, values, scale, spacing):
+        return [f"1e{int(round(v))}" if abs(v - round(v)) < 1e-6 else "" for v in values]
 
 
 def swatch(color, text):
     return f'<span style="color:{color}">■</span> {text}'
 
 
+def fmt_pa(value):
+    return "–" if value is None or (isinstance(value, float) and math.isnan(value)) else f"{value:.2e}"
+
+
 class FlowGraph(QWidget):
     export_requested = Signal(str)      # "png" or "csv"
+    slots_changed = Signal(object)      # tuple of the two lower panel kinds
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -29,14 +50,17 @@ class FlowGraph(QWidget):
         self.names = {}
         self.colors = {}
         self.buffer = None
+        self.pressures = None
+        self.p_max = None
         self.pct_mode = False
         self.follow = True
         self.window_s = 300
+        self.slots = list(DEFAULT_SLOTS)
         self._dirty = False
-        self._curves = {}           # (kind, address) -> (PlotItem, PlotDataItem)
+        self._curves = {}           # (kind, address or gauge key) -> (PlotItem, PlotDataItem)
         self._channel_checks = {}
         self._crosshair_x = None
-        self._flow_label = None
+        self._flow_unit = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -65,7 +89,7 @@ class FlowGraph(QWidget):
         self.png_button = QPushButton("PNG…")
         self.png_button.setToolTip("Save the graph as an image")
         self.csv_button = QPushButton("CSV…")
-        self.csv_button.setToolTip("Save all buffered data as CSV")
+        self.csv_button.setToolTip("Save all buffered data as CSV (flows and pressures)")
         self.png_button.clicked.connect(lambda: self.export_requested.emit("png"))
         self.csv_button.clicked.connect(lambda: self.export_requested.emit("csv"))
         controls.addWidget(QLabel("Window"))
@@ -75,6 +99,31 @@ class FlowGraph(QWidget):
         controls.addWidget(self.csv_button)
         layout.addLayout(controls)
 
+        panels = QHBoxLayout()
+        panels.addWidget(QLabel("Lower panels"))
+        self.slot_combos = []
+        for index in range(2):
+            combo = QComboBox()
+            for kind, label in PANELS.items():
+                combo.addItem(label, kind)
+            combo.setCurrentIndex(combo.findData(self.slots[index]))
+            combo.currentIndexChanged.connect(self._slot_combo_changed)
+            combo.setToolTip(f"What the {'upper' if index == 0 else 'lower'} of the two small panels shows")
+            self.slot_combos.append(combo)
+            panels.addWidget(combo)
+        panels.addSpacing(16)
+        self.gauge_label = QLabel("Gauges")
+        panels.addWidget(self.gauge_label)
+        self.gauge_checks = {}
+        for gauge in GAUGES:
+            check = QCheckBox(gauge.short)
+            check.setToolTip(gauge.label)
+            check.toggled.connect(self._mark_dirty)
+            self.gauge_checks[gauge.key] = check
+            panels.addWidget(check)
+        panels.addStretch(1)
+        layout.addLayout(panels)
+
         self.readout = QLabel(" ")
         self.readout.setTextFormat(Qt.RichText)
         self.note = QLabel()
@@ -83,19 +132,20 @@ class FlowGraph(QWidget):
         layout.addWidget(self.note)
 
         self.view = pg.GraphicsLayoutWidget()
-        self.flow_plot = self.view.addPlot(row=0, col=0, axisItems={"bottom": pg.DateAxisItem()})
-        self.valve_plot = self.view.addPlot(row=1, col=0, axisItems={"bottom": pg.DateAxisItem()})
-        self.mix_plot = self.view.addPlot(row=2, col=0, axisItems={"bottom": pg.DateAxisItem()})
-        self.plots = [self.flow_plot, self.valve_plot, self.mix_plot]
-        rows = self.view.ci.layout
-        for row, stretch in enumerate((3, 1, 1)):
-            rows.setRowStretchFactor(row, stretch)
+        self.view.ci.layout.setVerticalSpacing(10)
+        self.flow_plot = pg.PlotItem(axisItems={"bottom": pg.DateAxisItem()})
+        self.pressure_plot = pg.PlotItem(axisItems={"bottom": pg.DateAxisItem(), "left": PressureAxis("left")})
+        self.valve_plot = pg.PlotItem(axisItems={"bottom": pg.DateAxisItem()})
+        self.mix_plot = pg.PlotItem(axisItems={"bottom": pg.DateAxisItem()})
+        self.plots = [self.flow_plot, self.pressure_plot, self.valve_plot, self.mix_plot]
+        self.panel_plots = {"pressure": self.pressure_plot, "valve": self.valve_plot, "mixture": self.mix_plot}
         for plot in self.plots:
             plot.setClipToView(True)
             plot.setDownsampling(auto=True, mode="peak")
             plot.setMenuEnabled(False)
             plot.hideButtons()
-            plot.getAxis("left").setWidth(60)
+            plot.getAxis("left").setWidth(64)
+            plot.titleLabel.setAttr("justify", "left")
             vb = plot.getViewBox()
             vb.setMouseEnabled(x=True, y=False)
             vb.sigRangeChangedManually.connect(lambda *_: self.set_follow(False))
@@ -103,9 +153,15 @@ class FlowGraph(QWidget):
                 plot.setXLink(self.flow_plot)
         self.flow_plot.getViewBox().setAutoVisible(y=True)
         self.flow_plot.enableAutoRange(y=True)
-        for plot, label in ((self.valve_plot, "Valve [%]"), (self.mix_plot, "Mixture [%]")):
+        for plot in (self.valve_plot, self.mix_plot):
             plot.setYRange(0, 100, padding=0.05)
-            plot.setLabel("left", label)
+        self.pressure_plot.setLogMode(x=False, y=True)
+        self.pressure_plot.enableAutoRange(y=True)
+        self.pressure_plot.getViewBox().setAutoVisible(y=True)
+        self.p_max_line = pg.InfiniteLine(angle=0, movable=False,
+                                          label="p max", labelOpts={"position": 0.03, "anchors": [(0, 1), (0, 1)]})
+        self.pressure_plot.addItem(self.p_max_line, ignoreBounds=True)
+        self.p_max_line.hide()
         self.crosshair = [pg.InfiniteLine(angle=90, movable=False) for _ in self.plots]
         for plot, line in zip(self.plots, self.crosshair):
             plot.addItem(line, ignoreBounds=True)
@@ -113,11 +169,15 @@ class FlowGraph(QWidget):
         self.view.scene().sigMouseMoved.connect(self._mouse_moved)
         layout.addWidget(self.view, 1)
 
+        for gauge in GAUGES:
+            self._curves["pressure", gauge.key] = (self.pressure_plot, self.pressure_plot.plot([], []))
+
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._redraw)
         self._timer.start(250)
         self.apply_theme(self.theme)
-        self.set_panels(True, True)
+        self.set_slots(self.slots)
+        self.set_gauges(["chamber_frg", "chamber_img", "chamber_hfig"])
 
     # --- setup ------------------------------------------------------------------------------
 
@@ -139,10 +199,27 @@ class FlowGraph(QWidget):
         self.set_names_colors(names, colors)
         self.set_follow(True)
 
+    def start_pressures(self, history_samples, p_max=None):
+        """Starts recording pressures (a vacuum card is being read)."""
+        self.pressures = PressureBuffer([g.key for g in GAUGES], history_samples)
+        self.p_max = p_max
+        if p_max:
+            self.p_max_line.setPos(math.log10(p_max))
+        self.p_max_line.setVisible(bool(p_max))
+        self._mark_dirty()
+
+    def stop_pressures(self):
+        self.pressures = None
+        self.p_max_line.hide()
+        for gauge in GAUGES:
+            self._curve("pressure", gauge.key).hide()
+        self._mark_dirty()
+
     def clear(self):
-        for plot, curve in self._curves.values():
-            plot.removeItem(curve)
-        self._curves = {}
+        for key, (plot, curve) in list(self._curves.items()):
+            if key[0] != "pressure":
+                plot.removeItem(curve)
+                del self._curves[key]
         for check in self._channel_checks.values():
             self._channel_row.removeWidget(check)
             check.deleteLater()
@@ -167,8 +244,15 @@ class FlowGraph(QWidget):
         self._style_total()
         self._mark_dirty()
 
-    def _curve(self, kind, address):
-        item = self._curves.get((kind, address))
+    def set_gauges(self, keys):
+        for key, check in self.gauge_checks.items():
+            check.setChecked(key in keys)
+
+    def selected_gauges(self):
+        return [key for key, check in self.gauge_checks.items() if check.isChecked()]
+
+    def _curve(self, kind, key):
+        item = self._curves.get((kind, key))
         return item[1] if item else None
 
     def _style_total(self):
@@ -185,22 +269,65 @@ class FlowGraph(QWidget):
                 axis.setPen(pg.mkPen(theme.border))
                 axis.setTextPen(pg.mkPen(theme.text_secondary))
             plot.showGrid(x=True, y=True, alpha=0.18)
+            plot.getViewBox().setBackgroundColor(theme.surface if plot is self.flow_plot else theme.tint)
         for line in self.crosshair:
             line.setPen(pg.mkPen(theme.text_secondary, width=1))
+        self.p_max_line.setPen(pg.mkPen(th.CRITICAL, width=1.5, style=Qt.DashLine))
+        self.p_max_line.label.setColor(th.CRITICAL)
+        for gauge in GAUGES:
+            color = theme.gauge_color(gauge.key)
+            self._curve("pressure", gauge.key).setPen(pg.mkPen(color, width=2))
+            self.gauge_checks[gauge.key].setStyleSheet(
+                f"QCheckBox {{ color: {color}; font-weight: bold; }} QCheckBox::indicator {{ width: 12px; "
+                f"height: 12px; border: 1px solid {color}; border-radius: 2px; }} "
+                f"QCheckBox::indicator:checked {{ background: {color}; }}")
         self.note.setStyleSheet(f"color: {theme.text_secondary};")
         self._style_total()
+        self._update_titles()
         self._mark_dirty()
+
+    def _title(self, plot, title, unit):
+        plot.setTitle(f"<b>{title.upper()}</b>&nbsp;&nbsp;<span style='color:{self.theme.text_secondary}'>"
+                      f"{unit}</span>", color=self.theme.text, size="9pt")
+        plot.layout.setRowFixedHeight(0, 20)
+
+    def _update_titles(self):
+        self._title(self.flow_plot, "Gas flow", self._flow_unit or "")
+        for kind, plot in self.panel_plots.items():
+            self._title(plot, PANELS[kind], PANEL_UNITS[kind])
 
     def set_pct_mode(self, on):
         self.pct_mode = on
         self._mark_dirty()
 
-    def set_panels(self, valve, mixture):
-        self.valve_plot.setVisible(valve)
-        self.mix_plot.setVisible(mixture)
-        visible = [p for p in self.plots if p.isVisible()]
+    def set_slots(self, kinds):
+        """Shows the flow panel plus the chosen lower panels ("pressure", "mixture", "valve" or "off")."""
+        kinds = [k if k in PANELS else "off" for k in list(kinds)[:2]] + ["off"] * (2 - len(list(kinds)[:2]))
+        self.slots = kinds
+        for combo, kind in zip(self.slot_combos, kinds):
+            combo.blockSignals(True)
+            combo.setCurrentIndex(combo.findData(kind))
+            combo.blockSignals(False)
+        layout = self.view.ci
         for plot in self.plots:
-            plot.getAxis("bottom").setStyle(showValues=plot is visible[-1])
+            if plot in layout.items:
+                layout.removeItem(plot)
+        shown = [self.flow_plot] + [self.panel_plots[k] for k in dict.fromkeys(kinds) if k != "off"]
+        for row, plot in enumerate(shown):
+            layout.addItem(plot, row=row, col=0)
+            layout.layout.setRowStretchFactor(row, 3 if plot is self.flow_plot else 2)
+        for plot in self.plots:
+            plot.setVisible(plot in shown)
+            plot.getAxis("bottom").setStyle(showValues=plot is shown[-1])
+        pressure_on = "pressure" in kinds
+        self.gauge_label.setVisible(pressure_on)
+        for check in self.gauge_checks.values():
+            check.setVisible(pressure_on)
+        self._mark_dirty()
+
+    def _slot_combo_changed(self):
+        self.set_slots([combo.currentData() for combo in self.slot_combos])
+        self.slots_changed.emit(tuple(self.slots))
 
     def set_follow(self, on):
         self.follow = on
@@ -217,6 +344,11 @@ class FlowGraph(QWidget):
     def append(self, states):
         if self.buffer is not None and states:
             self.buffer.append(states[0].t, states)
+            self._dirty = True
+
+    def append_pressures(self, state):
+        if self.pressures is not None and state is not None:
+            self.pressures.append(state)
             self._dirty = True
 
     def _mark_dirty(self, *_):
@@ -236,9 +368,12 @@ class FlowGraph(QWidget):
         return data, unit, pct
 
     def _redraw(self):
-        if not self._dirty or self.buffer is None or not self.isVisible():
+        if not self._dirty or not self.isVisible():
             return
         self._dirty = False
+        self._redraw_pressures()
+        if self.buffer is None:
+            return
         t = self.buffer.t
         flows, unit, pct = self._flows()
         show_measure, show_setpoint = self.measure_check.isChecked(), self.setpoint_check.isChecked()
@@ -276,10 +411,12 @@ class FlowGraph(QWidget):
             for c in self.channels:
                 self._set_curve(("mix", c.address), t, None, False)
 
-        label = "Flow [% of full scale]" if pct else f"Flow [{unit}]"
-        if label != self._flow_label:
-            self._flow_label = label
-            self.flow_plot.setLabel("left", label)
+        flow_unit = "% of full scale" if pct else unit
+        if flow_unit != self._flow_unit:
+            self._flow_unit = flow_unit
+            self._update_titles()
+        if self.pressures is None and "pressure" in self.slots:
+            notes.append("No chamber pressures: no vacuum card is read in this session.")
         self.note.setText(" ".join(notes))
         self.note.setVisible(bool(notes))
 
@@ -292,6 +429,15 @@ class FlowGraph(QWidget):
             self.flow_plot.setXRange(start, end, padding=0)
         if self._crosshair_x is not None:
             self._update_readout(self._crosshair_x)
+
+    def _redraw_pressures(self):
+        if self.pressures is None:
+            return
+        t = self.pressures.t
+        selected = set(self.selected_gauges())
+        for gauge in GAUGES:
+            y = self.pressures.series(gauge.key)
+            self._set_curve(("pressure", gauge.key), t, y, gauge.key in selected and not np.all(np.isnan(y)))
 
     def _set_curve(self, key, t, y, visible):
         curve = self._curve(*key)
@@ -321,24 +467,28 @@ class FlowGraph(QWidget):
         self.readout.setText(" ")
 
     def _update_readout(self, x):
-        if self.buffer is None or len(self.buffer) == 0:
-            return
         parts = [datetime.fromtimestamp(x).strftime("%H:%M:%S")]
-        for c in self.channels:
-            a = c.address
-            if not self._channel_checks[a].isChecked():
-                continue
-            d = 1 if self.pct_mode else decimals_for(c.capacity)
-            measure = self.buffer.value_at(a, "measure", x)
-            setpoint = self.buffer.value_at(a, "setpoint", x)
-            valve = self.buffer.value_at(a, "valve", x)
-            if self.pct_mode:
-                measure, setpoint, unit = measure / c.capacity * 100, setpoint / c.capacity * 100, "%"
-            else:
-                unit = c.unit
-            text = (f"{self.names.get(a, a)} {measure:.{d}f} / {setpoint:.{d}f} {unit}, valve {valve:.0f} %"
-                    if not np.isnan(measure) else f"{self.names.get(a, a)} no data")
-            parts.append(swatch(self.colors.get(a, "#888"), text))
+        if self.buffer is not None and len(self.buffer):
+            for c in self.channels:
+                a = c.address
+                if not self._channel_checks[a].isChecked():
+                    continue
+                d = 1 if self.pct_mode else decimals_for(c.capacity)
+                measure = self.buffer.value_at(a, "measure", x)
+                setpoint = self.buffer.value_at(a, "setpoint", x)
+                valve = self.buffer.value_at(a, "valve", x)
+                if self.pct_mode:
+                    measure, setpoint, unit = measure / c.capacity * 100, setpoint / c.capacity * 100, "%"
+                else:
+                    unit = c.unit
+                text = (f"{self.names.get(a, a)} {measure:.{d}f} / {setpoint:.{d}f} {unit}, valve {valve:.0f} %"
+                        if not np.isnan(measure) else f"{self.names.get(a, a)} no data")
+                parts.append(swatch(self.colors.get(a, "#888"), text))
+        if self.pressures is not None and "pressure" in self.slots:
+            for key in self.selected_gauges():
+                gauge = next(g for g in GAUGES if g.key == key)
+                parts.append(swatch(self.theme.gauge_color(key),
+                                    f"{gauge.short} {fmt_pa(self.pressures.value_at(key, x))} Pa"))
         self.readout.setText("&nbsp;&nbsp;·&nbsp;&nbsp;".join(parts))
 
     # --- export -----------------------------------------------------------------------------
@@ -350,7 +500,10 @@ class FlowGraph(QWidget):
         if self.buffer is None:
             raise RuntimeError("No data recorded yet.")
         units = {c.address: c.unit for c in self.channels}
-        self.buffer.to_csv(path, self.names, units)
+        extra = []
+        if self.pressures is not None:
+            extra = [(f"{g.label} [Pa]", self.pressures.aligned(g.key, self.buffer.t)) for g in GAUGES]
+        self.buffer.to_csv(path, self.names, units, extra)
 
     def sample_count(self):
         return 0 if self.buffer is None else len(self.buffer)

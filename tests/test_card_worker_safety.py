@@ -117,6 +117,9 @@ def test_gas_allowed_only_while_pumped():
     h.state(p=0.5)
     with pytest.raises(GasBlocked, match="not pumped"):
         h.supervisor.check_setpoint(0.1)
+    h.gas = True                                # the pressure of our own gas does not block changes
+    h.supervisor.check_setpoint(0.1)
+    h.gas = False
     h.supervisor.set_override("block_unpumped")
     h.supervisor.check_setpoint(0.1)
     assert h.supervisor.status().level == "warning"

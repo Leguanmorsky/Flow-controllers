@@ -6,7 +6,7 @@ simulates the pressures from the valves, pumps, vents and the MFC gas flow.
 The model is coarse but behaves like the real system where it matters for the app:
 - parts joined by open valves share one pressure; pumps and vents act on the joined group;
 - steady state p = (gas load + Σ S·p_ultimate) / Σ S, approached with the time constant V/S;
-- calibrated to the lab: 0.01 sccm into the main chamber pumped by TMP1 gives about 1e-3 Pa;
+- calibrated to the lab: 0.01 sccm into the main chamber with the start valves gives about 1e-3 Pa;
 - IMG300 and HFIG read null above 1e-2 Pa, like the real gauges.
 """
 
@@ -128,15 +128,15 @@ class SimCard:
         v = self.physical
         pumps = []
         if volume == "prep" and v["V04"] and v["FV1"] and not v["VV1"]:
-            pumps.append((0.017, 0.0) if p < 100 else (0.02, 1.0))     # TMP1, or roughing through it
+            pumps.append((0.012, 0.0) if p < 100 else (0.02, 1.0))     # TMP1, or roughing through it
         if volume == "loadlock" and v["V13"] and v["V10"] and not v["V09"]:
             pumps.append((0.05, 0.0) if p < 100 else (0.02, 1.0))      # TMP2
         if volume == "airlock" and v["V06"]:
             pumps.append((0.01, 1.0))                                   # fore pump
         if volume == "main" and v["V19"] and p < 1e-2:
-            pumps.append((0.01, 0.0))                                   # ion pump
+            pumps.append((0.003, 0.0))                                  # ion pump
         if volume == "carousel" and p < 1e-2:
-            pumps.append((0.005, 0.0))                                  # carousel ion pump
+            pumps.append((0.002, 0.0))                                  # carousel ion pump
         if volume == "main" and self.chamber_pumping:
             pumps.append((0.05, 1e-6))                                  # the card's own pump sequence
         if volume in ("gun", "column") and not self.gun_vent and p < 1e-2:

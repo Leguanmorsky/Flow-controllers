@@ -61,12 +61,13 @@ class CardWorker(threading.Thread):
         return future
 
     def open_valve(self, name):
-        def run():
-            register = self.client.open_valve(name)
-            self._later.append((self.clock() + POWER_SAVE_DELAY_S, self.client.power_save,
-                                "valve supply back to 12 V"))
-            return register
-        return self.submit(run)
+        return self.submit(self.open_valve_job, name)
+
+    def open_valve_job(self, name):
+        """Worker thread: opens the valve (interlocks checked by the client), 12 V again 1 s later."""
+        register = self.client.open_valve(name)
+        self._later.append((self.clock() + POWER_SAVE_DELAY_S, self.client.power_save, "valve supply back to 12 V"))
+        return register
 
     def close_valve(self, name):
         return self.submit(self.client.close_valve, name)

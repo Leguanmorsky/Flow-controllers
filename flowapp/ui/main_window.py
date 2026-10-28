@@ -15,23 +15,29 @@ from PySide6.QtWidgets import (QApplication, QDialog, QFileDialog, QLabel, QMain
                                QPlainTextEdit, QScrollArea, QSplitter, QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import __version__
-from ..config import CONFIG_DIR, ROOT, ChannelConfig, load_channels, save_channels
+from ..config import CONFIG_DIR, ROOT, ChannelConfig, load_card_config, load_channels, save_channels
+from ..core.card_sim import FAULTS as CARD_FAULTS
 from ..core.report import save_report
+from ..core.safety import GasBlocked
 from ..core.simulator import CHANNEL_FAULTS, FAULTS
 from ..desktop import create_desktop_shortcut
 from . import dialogs
 from . import theme as th
 from .bridge import SIM_PORT, InstrumentBridge, default_bus_factory
+from .card_bridge import CardBridge
 from .channel_card import ChannelCard
 from .connection_bar import ConnectionBar
-from .graph import MIXTURE_MIN_TOTAL, FlowGraph, history_samples, swatch
+from .graph import DEFAULT_SLOTS, MIXTURE_MIN_TOTAL, PANELS, FlowGraph, history_samples, swatch
 from .start_page import StartPage
 from .units import common_unit, decimals_for
+from .vacuum_widgets import PressureStrip
 
 EXPORT_DIR = ROOT / "exports"
 LOG_LINES = 2000
 STALE_S = 2.0       # the status bar turns red when no poll arrived for this long
 THEME_LABELS = {"system": "Follow Windows", "light": "Light", "dark": "Dark"}
+PANEL_PRESETS = [("pressure", "mixture"), ("pressure", "valve"), ("mixture", "valve"), ("pressure", "off"),
+                 ("off", "off")]
 
 
 def _package_version(name):
@@ -45,7 +51,7 @@ class MainWindow(QMainWindow):
     _shortcut_done = Signal(str, str)   # level, message (from the background thread)
 
     def __init__(self, settings, bus_factory=default_bus_factory, channels_path=CONFIG_DIR / "channels.json",
-                 qsettings=None, make_shortcut=create_desktop_shortcut):
+                 qsettings=None, make_shortcut=create_desktop_shortcut, card_config_loader=load_card_config):
         super().__init__()
         self.settings = settings
         self.make_shortcut = make_shortcut     # None: never create a desktop shortcut (tests)
@@ -53,6 +59,8 @@ class MainWindow(QMainWindow):
         self.qsettings = qsettings if qsettings is not None else QSettings("FlowControllers", "FlowApp")
         self.channel_config = load_channels(self.channels_path)
         self.bridge = InstrumentBridge(settings, bus_factory, self)
+        self.card = CardBridge(self.bridge, card_config_loader, parent=self)
+        self.bridge.gas_guard = lambda value: self.card.supervisor.check_setpoint(value)
         self.cards = {}
         self.theme = th.LIGHT
         self.theme_mode = str(self.qsettings.value("theme", "system"))
@@ -108,9 +116,16 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self.summary)
 
         self.graph = FlowGraph()
+        self.strip = PressureStrip()
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 4, 4, 0)
+        right_layout.setSpacing(6)
+        right_layout.addWidget(self.strip)
+        right_layout.addWidget(self.graph, 1)
         self.h_split = QSplitter(Qt.Horizontal)
         self.h_split.addWidget(left)
-        self.h_split.addWidget(self.graph)
+        self.h_split.addWidget(right)
         self.h_split.setStretchFactor(1, 1)
         self.h_split.setSizes([390, 1000])
 
@@ -158,12 +173,10 @@ class MainWindow(QMainWindow):
         self.pct_action.setChecked(self.pct_mode)
         self.pct_action.toggled.connect(self.set_pct_mode)
         view_menu.addSeparator()
-        self.valve_action = view_menu.addAction("Valve % panel")
-        self.mix_action = view_menu.addAction("Mixture % panel")
-        for action in (self.valve_action, self.mix_action):
-            action.setCheckable(True)
-            action.setChecked(True)
-            action.toggled.connect(self._apply_panels)
+        panels_menu = view_menu.addMenu("Lower graph panels")
+        for preset in PANEL_PRESETS:
+            label = " + ".join(PANELS[k] for k in preset if k != "off") or "None (flow only)"
+            panels_menu.addAction(label, lambda p=preset: self.graph.set_slots(p))
         theme_menu = view_menu.addMenu("Theme")
         group = QActionGroup(self)
         self.theme_actions = {}
@@ -213,6 +226,11 @@ class MainWindow(QMainWindow):
         b.event.connect(self.log_event)
         b.ramps_changed.connect(self._refresh_ramps)
         self.graph.export_requested.connect(self.export)
+        c = self.card
+        c.vacuum_updated.connect(self._on_vacuum)
+        c.gas_status_changed.connect(self.strip.set_gas)
+        c.event.connect(self.log_event)
+        self.strip.acknowledge_requested.connect(c.acknowledge_trip)
         QApplication.styleHints().colorSchemeChanged.connect(self._system_theme_changed)
 
     def _show_start_page(self, message="", error=False):
@@ -234,6 +252,12 @@ class MainWindow(QMainWindow):
 
     def _on_connected(self, channels):
         self._build_cards(channels)
+        self.card.start(self.bridge.simulated)
+        if self.card.running:
+            self.graph.start_pressures(int(self.settings.history_minutes * 60 * self.card.config.poll_hz),
+                                       self.card.config.p_max_pa)
+        self.strip.set_card(None, self.card.mode)
+        self.strip.set_gas(self.card.gas_status())
         if self.bridge.simulated:
             self.bar.set_status(f"Test mode · {len(channels)} simulated instrument(s)", th.SERIOUS)
         else:
@@ -249,6 +273,9 @@ class MainWindow(QMainWindow):
         self._show_start_page(f"Connection failed: {message}", error=True)
 
     def _on_disconnected(self):
+        self.card.stop()
+        self.graph.stop_pressures()
+        self.strip.set_gas(None)
         self._clear_cards()
         for action in (self.zero_action, self.report_action, self.disconnect_action):
             action.setEnabled(False)
@@ -319,8 +346,8 @@ class MainWindow(QMainWindow):
             card.set_pct_mode(self.pct_mode)
             self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
             self.cards[info.address] = card
-            card.setpoint_requested.connect(self.bridge.set_setpoint)
-            card.ramp_requested.connect(self.bridge.start_ramp)
+            card.setpoint_requested.connect(self._request_setpoint)
+            card.ramp_requested.connect(self._request_ramp)
             card.ramp_stop_requested.connect(self.bridge.stop_ramp)
             card.identify_requested.connect(self.bridge.wink)
             card.settings_requested.connect(self._edit_channel)
@@ -379,7 +406,37 @@ class MainWindow(QMainWindow):
                 card.update_state(s, self.bridge.ramp(s.address), self.bridge.ramp_remaining(s.address),
                                   self.bridge.deviation.get(s.address))
         self.graph.append(states)
+        self.card.feed_sim_flows(states, self.bridge.channels)
         self._update_summary(states)
+
+    def _on_vacuum(self, state):
+        self.graph.append_pressures(state)
+        self.strip.set_card(state, self.card.mode)
+
+    # --- gas safety ---------------------------------------------------------------------------
+
+    def _with_gas_check(self, send):
+        """Runs `send()`; when a safety rule refuses the gas, asks whether to override (or acknowledge a trip)."""
+        try:
+            return send()
+        except GasBlocked as blocked:
+            self.log_event("warning", f"Not sent: {blocked.reason}")
+            choice = dialogs.gas_blocked(self, blocked)
+            if choice == "acknowledge":
+                self.card.acknowledge_trip()
+            elif choice == "override" and blocked.overridable:
+                self.card.set_override(blocked.rule, True)
+                try:
+                    return send()
+                except GasBlocked as again:
+                    self.log_event("error", f"Not sent: {again.reason}")
+        return None
+
+    def _request_setpoint(self, address, value):
+        return self._with_gas_check(lambda: self.bridge.set_setpoint(address, value))
+
+    def _request_ramp(self, address, target, rate_per_min=None, duration_s=None):
+        return self._with_gas_check(lambda: self.bridge.start_ramp(address, target, rate_per_min, duration_s))
 
     def _refresh_ramps(self):
         for address, card in self.cards.items():
@@ -414,6 +471,13 @@ class MainWindow(QMainWindow):
             return
         for name in ("unplugged", "noisy"):
             self._add_sim_action(self.sim_menu, name, None)
+        if self.card.sim_card is not None:
+            card_menu = self.sim_menu.addMenu("Vacuum card")
+            for name, label in CARD_FAULTS.items():
+                action = card_menu.addAction(label)
+                action.setCheckable(True)
+                action.toggled.connect(lambda on, n=name: self.card.set_sim_fault(n, on))
+                self._sim_actions.append((action, name, "card"))
         self.sim_menu.addSeparator()
         for info in self.bridge.channels:
             sub = self.sim_menu.addMenu(self.bridge.name(info.address))
@@ -438,7 +502,10 @@ class MainWindow(QMainWindow):
             return
         for action, name, address in self._sim_actions:
             action.blockSignals(True)
-            action.setChecked(self.bridge.bus.has_fault(name, address))
+            if address == "card":
+                action.setChecked(self.card.sim_card is not None and self.card.sim_card.has_fault(name))
+            else:
+                action.setChecked(self.bridge.bus.has_fault(name, address))
             action.blockSignals(False)
 
     # --- view -------------------------------------------------------------------------------
@@ -448,9 +515,6 @@ class MainWindow(QMainWindow):
         for card in self.cards.values():
             card.set_pct_mode(on)
         self.graph.set_pct_mode(on)
-
-    def _apply_panels(self, *_):
-        self.graph.set_panels(self.valve_action.isChecked(), self.mix_action.isChecked())
 
     def apply_theme(self, mode):
         if self._applying_theme:
@@ -463,6 +527,7 @@ class MainWindow(QMainWindow):
             self._applying_theme = False
         self.theme_actions[mode].setChecked(True)
         self.graph.apply_theme(self.theme)
+        self.strip.apply_theme(self.theme)
         self.start.apply_theme(self.theme)
         self._restyle_cards()
         self.log.clear()
@@ -586,9 +651,11 @@ class MainWindow(QMainWindow):
             state = q.value(key)
             if state:
                 splitter.restoreState(state)
-        self.valve_action.setChecked(q.value("valve_panel", True, type=bool))
-        self.mix_action.setChecked(q.value("mixture_panel", True, type=bool))
-        self._apply_panels()
+        slots = q.value("graph_slots", ",".join(DEFAULT_SLOTS))
+        self.graph.set_slots(str(slots).split(","))
+        gauges = q.value("graph_gauges")
+        if gauges is not None:
+            self.graph.set_gauges([g for g in str(gauges).split(",") if g])
         self.graph.window_combo.setCurrentIndex(q.value("window_index", 1, type=int))
         self.graph.set_pct_mode(self.pct_mode)
 
@@ -599,6 +666,6 @@ class MainWindow(QMainWindow):
         q.setValue("v_split", self.v_split.saveState())
         q.setValue("theme", self.theme_mode)
         q.setValue("pct_mode", self.pct_mode)
-        q.setValue("valve_panel", self.valve_action.isChecked())
-        q.setValue("mixture_panel", self.mix_action.isChecked())
+        q.setValue("graph_slots", ",".join(self.graph.slots))
+        q.setValue("graph_gauges", ",".join(self.graph.selected_gauges()))
         q.setValue("window_index", self.graph.window_combo.currentIndex())
